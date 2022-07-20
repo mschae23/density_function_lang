@@ -1,18 +1,37 @@
-use density_function_language;
-use density_function_language::compiler::lexer::Lexer;
-use density_function_language::compiler::parser::Parser;
+use std::path::PathBuf;
+use std::process::ExitCode;
+use clap::Parser as ClapParser;
+use density_function_lang;
+use density_function_lang::compiler::lexer::Lexer;
+use density_function_lang::compiler::parser::Parser;
 
-fn main() {
-    let source = r"4.3333 * 8 + 99 + 2 + 3 * 67";
+#[derive(ClapParser, Debug)]
+#[clap(author, version, about, long_about = None)]
+pub struct Config {
+    #[clap(default_value = "main.densityfunction", help = "Main input file")]
+    pub input: PathBuf,
+    #[clap(long, default_value = "target", help = "Target directory")]
+    pub target_dir: PathBuf,
+
+    #[clap(short, long, help = "Print verbose log output")]
+    pub verbose: bool,
+}
+
+fn main() -> ExitCode {
+    let config: Config = Config::parse();
+
+    let source = std::fs::read_to_string(config.input);
+    let source = if let Ok(source) = source { source } else { return ExitCode::FAILURE };
 
     let lexer = Lexer::new(&source);
-
     let mut parser = Parser::new(lexer);
-    let expr = density_function_language::compiler::ast::Expr::Error; // parser.parse_expression();
+    let statements = parser.parse();
 
     if parser.had_error() {
-        eprintln!("Parser terminated with error.");
+        return ExitCode::FAILURE;
     }
 
-    println!("{:?}", expr);
+    println!("{}", statements.iter().map(|stmt| format!("{:?}", stmt)).collect::<Vec<String>>().join("\n"));
+
+    ExitCode::SUCCESS
 }

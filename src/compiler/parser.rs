@@ -62,20 +62,51 @@ impl<'source> Parser<'source> {
     // Statement parsing
 
     pub fn parse(&mut self) -> Vec<Stmt> {
-        let statements = Vec::new();
+        self.consume();
+
+        let mut statements = Vec::new();
 
         while !self.is_eof() {
-            // TODO
+            statements.push(self.parse_declaration());
         }
 
         statements
     }
 
+    fn parse_declaration(&mut self) -> Stmt {
+        let stmt = self.parse_statement();
+
+        if self.panic_mode {
+            self.synchronize();
+        }
+
+        stmt
+    }
+
+    fn parse_statement(&mut self) -> Stmt {
+        if self.matches(TokenType::Function) {
+            return self.parse_function_statement();
+        }
+
+        self.error_at_current("Expected statement.", true);
+        Stmt::Error
+    }
+
+    fn parse_function_statement(&mut self) -> Stmt {
+        self.expect(TokenType::Identifier, "Expected name after 'function'.");
+        let name = self.previous.clone();
+
+        self.expect(TokenType::Assign, "Expected '=' after function name.");
+
+        let expr = self.parse_expression();
+        self.expect_statement_end();
+
+        Stmt::Function { name, expr }
+    }
+
     // Expression parsing
 
     fn parse_expression(&mut self) -> Expr {
-        self.consume();
-
         self.parse_term()
     }
 
@@ -113,7 +144,51 @@ impl<'source> Parser<'source> {
             return Expr::UnaryOperator { operator, expr: Box::new(right) };
         }
 
-        self.parse_primary()
+        self.parse_call()
+    }
+
+    fn parse_call(&mut self) -> Expr {
+        let mut expr = self.parse_primary();
+
+        loop {
+            if self.matches(TokenType::ParenthesisLeft) {
+                expr = self.finish_call(expr);
+            } else if self.matches(TokenType::Dot) {
+                self.expect(TokenType::Identifier, "Expected member name after '.'.");
+                let name = self.previous.clone();
+
+                expr = Expr::Member { receiver: Box::new(expr), name }
+            } else {
+                break;
+            }
+        }
+
+        expr
+    }
+
+    fn finish_call(&mut self, callee: Expr) -> Expr {
+        let mut arguments = vec![];
+
+        if !self.check(TokenType::ParenthesisRight) {
+            arguments.push(self.parse_expression());
+
+            while self.matches(TokenType::Comma) {
+                if arguments.len() >= 255 {
+                    self.error_at_current("Can't have more than 255 function call arguments.", false);
+                }
+
+                arguments.push(self.parse_expression());
+            }
+        }
+
+        self.expect(TokenType::ParenthesisRight, "Expected ')' after function call arguments.");
+
+        match callee {
+            Expr::Member { receiver, name } =>
+                Expr::FunctionCall { receiver: Some(receiver), callee: Box::new(Expr::Identifier(name)), args: arguments },
+            callee =>
+                Expr::FunctionCall { receiver: None, callee: Box::new(callee), args: arguments }
+        }
     }
 
     fn parse_primary(&mut self) -> Expr {
@@ -139,6 +214,8 @@ impl<'source> Parser<'source> {
                     Expr::Error
                 },
             }
+        } else if self.matches(TokenType::Identifier) {
+            return Expr::Identifier(self.previous.clone())
         } else if self.matches(TokenType::ParenthesisLeft) {
             let expr = self.parse_expression();
             self.expect(TokenType::ParenthesisRight, "Expected ')' after expression.");
@@ -225,7 +302,7 @@ impl<'source> Parser<'source> {
             }
 
             match self.current.token_type() {
-                TokenType::Fn => return,
+                TokenType::Function => return,
                 _ => {},
             };
 

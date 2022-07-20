@@ -1,17 +1,30 @@
 use std::fmt::{Debug, Formatter};
 use crate::compiler::lexer::Token;
 
-#[derive(Debug)]
 pub enum Stmt {
-    Fn {
-        name: String,
-        // TODO
+    Function {
+        name: Token,
+        expr: Expr,
     },
+
+    Error,
+}
+
+impl Debug for Stmt {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Stmt::Function { name, expr } => write!(f, "function {} = {:?};", name.source(), expr),
+
+            Stmt::Error => write!(f, "Error;")
+        }
+    }
 }
 
 pub enum Expr {
     ConstantFloat(f32),
     ConstantInt(i32),
+    ConstantString(String),
+    Identifier(Token),
 
     Group(Box<Expr>),
 
@@ -26,17 +39,12 @@ pub enum Expr {
     },
     FunctionCall {
         receiver: Option<Box<Expr>>,
-        name: String,
+        callee: Box<Expr>,
         args: Vec<Expr>,
     },
     Member {
         receiver: Box<Expr>,
-        name: String,
-    },
-
-    Reference {
-        namespace: Option<String>,
-        path: String,
+        name: Token,
     },
 
     Error,
@@ -47,28 +55,23 @@ impl Debug for Expr {
         match self {
             Expr::ConstantFloat(value) => write!(f, "{}", value),
             Expr::ConstantInt(value) => write!(f, "{}", value),
+            Expr::ConstantString(value) => write!(f, "\"{}\"", value),
+            Expr::Identifier(value) => write!(f, "{}", value.source()),
             Expr::Group(expr) => write!(f, "{:?}", expr),
             Expr::UnaryOperator { operator, expr } => write!(f, "({}{:?})", operator.source(), expr),
             Expr::BinaryOperator { left, operator, right } => write!(f, "({:?} {} {:?})", left, operator.source(), right),
-            Expr::FunctionCall { receiver, name, args } => {
+            Expr::FunctionCall { receiver, callee, args } => {
+                write!(f, "(")?;
+
                 if let Some(receiver) = receiver {
                     write!(f, "{:?}.", receiver)?;
                 }
 
-                write!(f, "{}({})", name, args.iter()
+                write!(f, "{:?}({}))", callee, args.iter()
                     .map(|expr| format!("{:?}", expr))
                     .collect::<Vec<String>>().join(", "))
             },
-            Expr::Member { receiver, name } => write!(f, "{:?}.{}", receiver, name),
-            Expr::Reference { namespace, path } => {
-                write!(f, "\"")?;
-
-                if let Some(namespace) = namespace {
-                    write!(f, "{}:", namespace)?;
-                }
-
-                write!(f, "{}\"", path)
-            },
+            Expr::Member { receiver, name } => write!(f, "({:?}.{})", receiver, name.source()),
             Expr::Error => write!(f, "Error"),
         }
     }

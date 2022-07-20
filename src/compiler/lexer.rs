@@ -51,7 +51,8 @@ pub enum TokenType {
     String,
 
     // Keywords
-    Inline, Fn,
+    Inline,
+    Function,
 
     // EOF
     Eof,
@@ -308,7 +309,7 @@ impl<'source> Lexer<'source> {
         let mut chars = name.chars();
 
         let token_type = match chars.next().expect("Internal compiler error: Empty identifier") {
-            'f' => Lexer::check_keyword(name, 1, "fn", TokenType::Fn),
+            'f' => Lexer::check_keyword(name, 1, "function", TokenType::Function),
             'i' => Lexer::check_keyword(name, 1, "inline", TokenType::Inline),
             _ => TokenType::Identifier,
         };
