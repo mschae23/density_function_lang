@@ -14,7 +14,7 @@ impl TokenPos {
     }
 
     pub fn begin() -> TokenPos {
-        TokenPos::new(0, 0)
+        TokenPos::new(1, 1)
     }
 }
 
@@ -31,6 +31,7 @@ pub enum TokenType {
 
     ParenthesisLeft, ParenthesisRight,
     BracketLeft, BracketRight,
+    SquareBracketLeft, SquareBracketRight,
     Dot, Comma, Semicolon, Colon,
 
     Assign, Equal,
@@ -52,6 +53,7 @@ pub enum TokenType {
 
     // Keywords
     Inline,
+    Template,
     Function,
 
     // EOF
@@ -195,6 +197,8 @@ impl<'source> Lexer<'source> {
                 ')' => Ok(self.make_token(TokenType::ParenthesisRight)),
                 '{' => Ok(self.make_token(TokenType::BracketLeft)),
                 '}' => Ok(self.make_token(TokenType::BracketRight)),
+                '[' => Ok(self.make_token(TokenType::SquareBracketLeft)),
+                ']' => Ok(self.make_token(TokenType::SquareBracketRight)),
                 '.' => Ok(self.make_token(TokenType::Dot)),
                 ',' => Ok(self.make_token(TokenType::Comma)),
                 ';' => Ok(self.make_token(TokenType::Semicolon)),
@@ -311,6 +315,7 @@ impl<'source> Lexer<'source> {
         let token_type = match chars.next().expect("Internal compiler error: Empty identifier") {
             'f' => Lexer::check_keyword(name, 1, "function", TokenType::Function),
             'i' => Lexer::check_keyword(name, 1, "inline", TokenType::Inline),
+            't' => Lexer::check_keyword(name, 1, "template", TokenType::Template),
             _ => TokenType::Identifier,
         };
 

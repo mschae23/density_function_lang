@@ -69,6 +69,8 @@ name = "density_function_lang"
 version = "1.0.0"
 dependencies = [
  "clap",
+ "lazy_static",
+ "proc-exit",
 ]
 
 [[package]]
@@ -103,6 +105,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "lazy_static"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
+
+[[package]]
 name = "libc"
 version = "0.2.126"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -119,6 +127,12 @@ name = "os_str_bytes"
 version = "6.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "648001efe5d5c0102d8cea768e348da85d90af8ba91f0bea908f157951493cd4"
+
+[[package]]
+name = "proc-exit"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0da6bbc8ef87314d4f596ad9d02db375c3f2d77fba91067a6f6a5754fdc8cb49"
 
 [[package]]
 name = "proc-macro-error"

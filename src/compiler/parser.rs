@@ -1,3 +1,4 @@
+use lazy_static::lazy_static;
 #[allow(unused)]
 use crate::debug;
 use crate::compiler::lexer::{Lexer, LexerError, Token, TokenPos, TokenType};
@@ -74,6 +75,12 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_declaration(&mut self) -> Stmt {
+        if self.matches(TokenType::Function) {
+            return self.parse_function_statement();
+        } else if self.matches(TokenType::Template) {
+            return self.parse_template_statement();
+        }
+
         let stmt = self.parse_statement();
 
         if self.panic_mode {
@@ -83,25 +90,59 @@ impl<'source> Parser<'source> {
         stmt
     }
 
-    fn parse_statement(&mut self) -> Stmt {
-        if self.matches(TokenType::Function) {
-            return self.parse_function_statement();
-        }
-
-        self.error_at_current("Expected statement.", true);
-        Stmt::Error
-    }
-
     fn parse_function_statement(&mut self) -> Stmt {
-        self.expect(TokenType::Identifier, "Expected name after 'function'.");
+        self.expect(TokenType::Identifier, "Expected name after 'function'");
         let name = self.previous.clone();
 
-        self.expect(TokenType::Assign, "Expected '=' after function name.");
+        self.expect(TokenType::Assign, "Expected '=' after function name");
 
         let expr = self.parse_expression();
         self.expect_statement_end();
 
         Stmt::Function { name, expr }
+    }
+
+    fn parse_template_statement(&mut self) -> Stmt {
+        lazy_static! {
+            static ref ALLOWED_TEMPLATE_NAME_TYPES: [TokenType; 15] = [
+                TokenType::Identifier,
+                TokenType::Plus, TokenType::Minus, TokenType::Multiply, TokenType::Divide,
+                TokenType::Equal, TokenType::NotEqual,
+                TokenType::Greater, TokenType::GreaterEqual,
+                TokenType::Less, TokenType::LessEqual,
+                TokenType::And, TokenType::ShortcircuitAnd,
+                TokenType::Or, TokenType::ShortcircuitOr,
+            ];
+        }
+
+        self.expect_any(&*ALLOWED_TEMPLATE_NAME_TYPES, "Expected name after 'template'");
+        let name = self.previous.clone();
+
+        self.expect(TokenType::ParenthesisLeft, "Expected '(' after template name");
+        let mut arguments = vec![];
+
+        if !self.check(TokenType::ParenthesisRight) {
+            self.expect(TokenType::Identifier, "Expected template parameter name after '('");
+            arguments.push(self.previous.clone());
+
+            while self.matches(TokenType::Comma) {
+                self.expect(TokenType::Identifier, "Expected template parameter name after ','");
+                arguments.push(self.previous.clone());
+            }
+        }
+
+        self.expect(TokenType::ParenthesisRight, "Expected ')' after template parameters");
+        self.expect(TokenType::Assign, "Expected '=' after ')'");
+
+        let expr = self.parse_expression();
+        self.expect_statement_end();
+
+        Stmt::Template { name, args: arguments, expr }
+    }
+
+    fn parse_statement(&mut self) -> Stmt {
+        self.error_at_current("Expected statement", true);
+        Stmt::Error
     }
 
     // Expression parsing
@@ -154,7 +195,7 @@ impl<'source> Parser<'source> {
             if self.matches(TokenType::ParenthesisLeft) {
                 expr = self.finish_call(expr);
             } else if self.matches(TokenType::Dot) {
-                self.expect(TokenType::Identifier, "Expected member name after '.'.");
+                self.expect(TokenType::Identifier, "Expected member name after '.'");
                 let name = self.previous.clone();
 
                 expr = Expr::Member { receiver: Box::new(expr), name }
@@ -167,6 +208,13 @@ impl<'source> Parser<'source> {
     }
 
     fn finish_call(&mut self, callee: Expr) -> Expr {
+        match &callee {
+            Expr::Member { .. } => {},
+            Expr::Identifier(_) => {},
+            _ =>
+                self.error(&format!("Cannot call non-identifier expression: {:?}", &callee), true),
+        };
+
         let mut arguments = vec![];
 
         if !self.check(TokenType::ParenthesisRight) {
@@ -174,20 +222,21 @@ impl<'source> Parser<'source> {
 
             while self.matches(TokenType::Comma) {
                 if arguments.len() >= 255 {
-                    self.error_at_current("Can't have more than 255 function call arguments.", false);
+                    self.error_at_current("Can't have more than 255 function call arguments", false);
                 }
 
                 arguments.push(self.parse_expression());
             }
         }
 
-        self.expect(TokenType::ParenthesisRight, "Expected ')' after function call arguments.");
+        self.expect(TokenType::ParenthesisRight, "Expected ')' after function call arguments");
 
         match callee {
             Expr::Member { receiver, name } =>
-                Expr::FunctionCall { receiver: Some(receiver), callee: Box::new(Expr::Identifier(name)), args: arguments },
-            callee =>
-                Expr::FunctionCall { receiver: None, callee: Box::new(callee), args: arguments }
+                Expr::FunctionCall { receiver: Some(receiver), name, args: arguments },
+            Expr::Identifier(name) =>
+                Expr::FunctionCall { receiver: None, name, args: arguments },
+            _ => Expr::Error,
         }
     }
 
@@ -216,17 +265,63 @@ impl<'source> Parser<'source> {
             }
         } else if self.matches(TokenType::Identifier) {
             return Expr::Identifier(self.previous.clone())
+        } else if self.matches(TokenType::String) {
+            return Expr::ConstantString(self.previous.source().to_owned())
         } else if self.matches(TokenType::ParenthesisLeft) {
             let expr = self.parse_expression();
-            self.expect(TokenType::ParenthesisRight, "Expected ')' after expression.");
+            self.expect(TokenType::ParenthesisRight, "Expected ')' after expression");
 
             return Expr::Group(Box::new(expr));
+        } else if self.matches(TokenType::BracketLeft) {
+            return self.parse_object_expression();
+        } else if self.matches(TokenType::SquareBracketLeft) {
+            return self.parse_array_expression();
         }
 
         self.consume();
-        self.error("Expected expression.", true);
+        self.error("Expected expression", true);
 
         Expr::Error
+    }
+
+    fn parse_object_expression(&mut self) -> Expr {
+        let mut fields = vec![];
+
+        if !self.check(TokenType::BracketRight) {
+            self.expect(TokenType::String, "Expected string after '{'");
+            let name = self.previous.clone();
+            self.expect(TokenType::Colon, "Expected ':' after object field key");
+            let expr = self.parse_expression();
+            fields.push((name, expr));
+
+            while self.matches(TokenType::Comma) {
+                self.expect(TokenType::String, "Expected string after '{'");
+                let name = self.previous.clone();
+                self.expect(TokenType::Colon, "Expected ':' after object field key");
+                let expr = self.parse_expression();
+                fields.push((name, expr));
+            }
+        }
+
+        self.expect(TokenType::BracketRight, "Expected '}' after object fields");
+        Expr::Object(fields)
+    }
+
+    fn parse_array_expression(&mut self) -> Expr {
+        let mut elements = vec![];
+
+        if !self.check(TokenType::SquareBracketRight) {
+            let expr = self.parse_expression();
+            elements.push(expr);
+
+            while self.matches(TokenType::Comma) {
+                let expr = self.parse_expression();
+                elements.push(expr);
+            }
+        }
+
+        self.expect(TokenType::SquareBracketRight, "Expected ']' after array elements");
+        Expr::Array(elements)
     }
 
     fn consume(&mut self) {
@@ -257,9 +352,20 @@ impl<'source> Parser<'source> {
         self.error_at_current(message, true);
     }
 
+    fn expect_any(&mut self, token_types: &[TokenType], message: &str) {
+        for token_type in token_types {
+            if self.current.token_type() == *token_type {
+                self.consume();
+                return;
+            }
+        }
+
+        self.error_at_current(message, true);
+    }
+
     #[inline]
     fn expect_statement_end(&mut self) {
-        self.expect(TokenType::Semicolon, "Expected ';' after statement.");
+        self.expect(TokenType::Semicolon, "Expected ';' after statement");
     }
 
     fn matches(&mut self, token_type: TokenType) -> bool { // Should be called "match", but that's a keyword

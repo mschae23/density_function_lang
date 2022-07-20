@@ -20,7 +20,7 @@ pub fn is_alphabetic(c: char) -> bool {
 
 #[inline]
 pub fn is_numeric(c: char) -> bool {
-    ('0'..=')').contains(&c)
+    ('0'..='9').contains(&c)
 }
 
 #[inline]

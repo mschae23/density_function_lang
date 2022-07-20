@@ -1,9 +1,11 @@
+use std::io::Write;
 use std::path::PathBuf;
-use std::process::ExitCode;
 use clap::Parser as ClapParser;
 use density_function_lang;
+use density_function_lang::compiler::compiler::Compiler;
 use density_function_lang::compiler::lexer::Lexer;
 use density_function_lang::compiler::parser::Parser;
+use density_function_lang::compiler::writer::JsonWriter;
 
 #[derive(ClapParser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -17,21 +19,38 @@ pub struct Config {
     pub verbose: bool,
 }
 
-fn main() -> ExitCode {
+fn main() -> proc_exit::ExitResult {
     let config: Config = Config::parse();
 
-    let source = std::fs::read_to_string(config.input);
-    let source = if let Ok(source) = source { source } else { return ExitCode::FAILURE };
+    let source = std::fs::read_to_string(config.input)?;
+    std::fs::create_dir_all(&config.target_dir)?;
 
     let lexer = Lexer::new(&source);
     let mut parser = Parser::new(lexer);
     let statements = parser.parse();
 
     if parser.had_error() {
-        return ExitCode::FAILURE;
+        return proc_exit::Code::DATA_ERR.ok();
     }
 
-    println!("{}", statements.iter().map(|stmt| format!("{:?}", stmt)).collect::<Vec<String>>().join("\n"));
+    let compiler = Compiler::new();
+    let functions = compiler.compile(statements);
 
-    ExitCode::SUCCESS
+    let mut writer = JsonWriter::new(String::from("    "), true);
+
+    let mut path = config.target_dir.clone();
+
+    for (name, element) in functions {
+        path.push(name);
+        path.set_extension("json");
+
+        let mut file = std::fs::File::create(&path)?;
+
+        writer.write_element(element, &mut file)?;
+        file.write_all(b"\n")?;
+
+        path.pop();
+    }
+
+    proc_exit::Code::SUCCESS.ok()
 }
