@@ -28,12 +28,12 @@ impl Compiler {
         }
     }
 
-    pub fn compile(mut self, statements: Vec<Stmt>) -> Vec<(String, JsonElement)> {
+    pub fn compile(mut self, statements: Vec<Stmt>) -> (Vec<(String, JsonElement)>, bool) {
         for stmt in statements {
             self.compile_statement(stmt);
         }
 
-        self.output_functions
+        (self.output_functions, self.had_error)
     }
 
     fn compile_statement(&mut self, stmt: Stmt) {
@@ -158,7 +158,7 @@ impl Compiler {
         if let Some(pos) = pos {
             eprint!("{} Error: ", pos);
         } else {
-            eprint!("Error': ");
+            eprint!("Error: ");
         }
 
         eprintln!("{}", message);

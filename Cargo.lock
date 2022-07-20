@@ -70,7 +70,6 @@ version = "1.0.0"
 dependencies = [
  "clap",
  "lazy_static",
- "proc-exit",
 ]
 
 [[package]]
@@ -127,12 +126,6 @@ name = "os_str_bytes"
 version = "6.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "648001efe5d5c0102d8cea768e348da85d90af8ba91f0bea908f157951493cd4"
-
-[[package]]
-name = "proc-exit"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0da6bbc8ef87314d4f596ad9d02db375c3f2d77fba91067a6f6a5754fdc8cb49"
 
 [[package]]
 name = "proc-macro-error"

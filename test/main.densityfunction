@@ -11,7 +11,7 @@ template mul(arg1, arg2) = simple_2("minecraft:mul", arg1, arg2);
 
 template blend_alpha() = simple_0("minecraft:blend_alpha");
 template blend_offset() = simple_0("minecraft:blend_offset");
-template blend_density(arg) = simple_1("minecraft:blend_alpha", arg);
+template blend_density(arg) = simple_1("minecraft:blend_density", arg);
 
 template clamp(arg, min, max) = { "type": "minecraft:clamp", "input": arg, "min": min, "max": max };
 
@@ -50,7 +50,7 @@ template weird_scaled_sampler(arg, noise, rarity_value_mapper) = {
     "noise": noise, "rarity_value_mapper": rarity_value_mapper
 };
 
-template interpolated(arg) = simple_1("minecraft:abs", arg);
+template interpolated(arg) = simple_1("minecraft:interpolated", arg);
 template flat_cache(arg) = simple_1("minecraft:flat_cache", arg);
 template cache_2d(arg) = simple_1("minecraft:cache_2d", arg);
 template cache_once(arg) = simple_1("minecraft:cache_once", arg);

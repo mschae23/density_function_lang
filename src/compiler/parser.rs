@@ -2,42 +2,7 @@ use lazy_static::lazy_static;
 #[allow(unused)]
 use crate::debug;
 use crate::compiler::lexer::{Lexer, LexerError, Token, TokenPos, TokenType};
-use ExprPrecedence::{/* Assignment, Or, And, Equality, Comparison, */ Term, Factor, Unary, Call, Primary};
 use crate::compiler::ast::{Expr, Stmt};
-
-#[derive(Debug, PartialEq, PartialOrd, Copy, Clone)]
-#[repr(u8)]
-pub enum ExprPrecedence {
-    None = 0,
-    // Assignment,  // =
-    // Or,          // ||
-    // And,         // &&
-    // Equality,    // == !=
-    // Comparison,  // < > <= >=
-    Term,        // + -
-    Factor,      // * /
-    Unary,       // ! -
-    Call,        // . ()
-    Primary,
-}
-
-impl ExprPrecedence {
-    pub fn next_higher_precedence(&self) -> ExprPrecedence {
-        match self {
-            ExprPrecedence::None => Term, // Assignment,
-            // Assignment => Or,
-            // Or => And,
-            // And => Equality,
-            // Equality => Comparison,
-            // Comparison => Term,
-            Term => Factor,
-            Factor => Unary,
-            Unary => Call,
-            Call => Primary,
-            Primary => Primary,
-        }
-    }
-}
 
 pub struct Parser<'source> {
     lexer: Lexer<'source>,
@@ -127,7 +92,13 @@ impl<'source> Parser<'source> {
 
             while self.matches(TokenType::Comma) {
                 self.expect(TokenType::Identifier, "Expected template parameter name after ','");
-                arguments.push(self.previous.clone());
+                let name = self.previous.clone();
+
+                if arguments.iter().any(|arg| *arg.source() == *name.source()) {
+                    self.error("Duplicate parameter", false);
+                }
+
+                arguments.push(name);
             }
         }
 
@@ -295,6 +266,10 @@ impl<'source> Parser<'source> {
             fields.push((name, expr));
 
             while self.matches(TokenType::Comma) {
+                if self.check(TokenType::BracketRight) {
+                    break;
+                }
+
                 self.expect(TokenType::String, "Expected string after '{'");
                 let name = self.previous.clone();
                 self.expect(TokenType::Colon, "Expected ':' after object field key");
@@ -315,6 +290,10 @@ impl<'source> Parser<'source> {
             elements.push(expr);
 
             while self.matches(TokenType::Comma) {
+                if self.check(TokenType::SquareBracketRight) {
+                    break;
+                }
+
                 let expr = self.parse_expression();
                 elements.push(expr);
             }

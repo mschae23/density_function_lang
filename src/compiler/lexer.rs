@@ -20,7 +20,7 @@ impl TokenPos {
 
 impl Display for TokenPos {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[line {0} column {1}]", self.line, self.column)
+        write!(f, "[line {} column {}]", self.line, self.column)
     }
 }
 
