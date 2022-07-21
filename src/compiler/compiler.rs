@@ -4,12 +4,16 @@ use std::rc::Rc;
 use crate::compiler::ast::{Expr, JsonElement, Module, OutputFunction, Stmt, Template};
 use crate::compiler::lexer::{Token, TokenPos};
 
+struct TemplateScope {
+    pub args: Vec<(String, JsonElement)>,
+}
+
 pub struct Compiler {
     current_module: Vec<Rc<RefCell<Module>>>,
     top_level_module: Rc<RefCell<Module>>,
-    template_args: Vec<(String, JsonElement)>,
+    template_scopes: Vec<TemplateScope>,
 
-    path: PathBuf, target_dir: PathBuf,
+    path: Rc<RefCell<PathBuf>>, target_dir: PathBuf,
 
     had_error: bool, panic_mode: bool,
 }
@@ -20,9 +24,9 @@ impl Compiler {
             current_module: vec![],
             top_level_module: Rc::new(RefCell::new(Module { name: String::from("<top-level>"),
                 sub_modules: vec![], templates: vec![], output_functions: vec![] })),
-            template_args: vec![],
+            template_scopes: vec![],
 
-            path, target_dir,
+            path: Rc::new(RefCell::new(path)), target_dir,
 
             had_error: false, panic_mode: false,
         }
@@ -76,6 +80,7 @@ impl Compiler {
             args: args.iter().map(|arg| arg.source().to_owned()).collect(),
             expr,
             current_modules: template_current_modules,
+            file_path: Rc::clone(&self.path),
         })))
     }
 
@@ -136,7 +141,7 @@ impl Compiler {
         if include_path.is_absolute() {
             self.error_at(*include_path_token.start(), "Include path must be relative", false);
         } else {
-            let mut path = self.path.to_owned();
+            let mut path = self.path.borrow().to_owned();
             path.pop();
             path.push(&include_path);
 
@@ -257,7 +262,7 @@ impl Compiler {
             Expr::ConstantInt(value) => JsonElement::ConstantInt(value),
             Expr::ConstantString(value) => JsonElement::ConstantString(value),
             Expr::Identifier(name) => {
-                if let Some((_, element)) = self.template_args.iter().rfind(|(arg, _)| *arg == *name.source()) {
+                if let Some((_, element)) = self.template_scopes.last().map(|scope| scope.args.iter().rfind(|(arg, _)| *arg == *name.source())).flatten() {
                     element.clone()
                 } else {
                     self.error_at(*name.start(), &format!("Unresolved reference: '{}'", name.source()), false);
@@ -312,29 +317,31 @@ impl Compiler {
         };
         let template_borrow = template.borrow();
 
-        let arg_count = template_borrow.args.len();
+        let mut scope_args = vec![];
 
-        for i in 0..arg_count {
+        for i in 0..template_borrow.args.len() {
             let name = template_borrow.args[i].clone();
             let element = args[i].clone();
 
-            self.template_args.push((name, element));
+            scope_args.push((name, element));
         }
+
+        self.template_scopes.push(TemplateScope { args: scope_args });
 
         let mut template_current_modules: Vec<Rc<RefCell<Module>>> = template_borrow.current_modules.iter()
             .map(|module| module.upgrade().expect("Internal compiler error: Module got dropped")).collect();
-        let template_current_modules_count = template_current_modules.len();
 
         let template_expr = template_borrow.expr.clone();
+        let mut template_file_path = Rc::clone(&template_borrow.file_path);
         drop(template_borrow);
 
-        self.current_module.append(&mut template_current_modules);
-
-        // TODO Change path to the template's original file path for better error messages
+        std::mem::swap(&mut self.current_module, &mut template_current_modules);
+        std::mem::swap(&mut self.path, &mut template_file_path);
 
         let expr = self.compile_expr(template_expr.clone());
-        self.template_args.truncate(self.template_args.len().saturating_sub(arg_count));
-        self.current_module.truncate(self.current_module.len().saturating_sub(template_current_modules_count));
+        self.template_scopes.pop();
+        std::mem::swap(&mut self.current_module, &mut template_current_modules);
+        std::mem::swap(&mut self.path, &mut template_file_path);
 
         expr
     }
@@ -384,7 +391,7 @@ impl Compiler {
             self.panic_mode = true;
         }
 
-        eprintln!("[{}:{}:{}] Error: {}", self.path.to_string_lossy(), pos.line, pos.column, message);
+        eprintln!("[{}:{}:{}] Error: {}", self.path.borrow().to_string_lossy(), pos.line, pos.column, message);
         self.had_error = true;
     }
 }

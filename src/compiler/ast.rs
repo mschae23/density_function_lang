@@ -140,6 +140,7 @@ pub struct Template {
     pub args: Vec<String>,
     pub expr: Expr,
     pub current_modules: Vec<Weak<RefCell<Module>>>,
+    pub file_path: Rc<RefCell<PathBuf>>,
 }
 
 #[derive(Debug)]
