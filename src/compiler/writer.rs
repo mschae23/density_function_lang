@@ -16,21 +16,22 @@ impl JsonWriter {
         }
     }
 
-    pub fn write_element(&mut self, element: JsonElement, out: &mut impl Write) -> Result<(), std::io::Error> {
+    pub fn write_element(&mut self, element: &JsonElement, out: &mut impl Write) -> Result<(), std::io::Error> {
         match element {
             JsonElement::ConstantFloat(value) =>
-                if value as i32 as f32 == value { write!(out, "{:.1}", value) } else { write!(out, "{}", value) },
+                if *value as i32 as f32 == *value { write!(out, "{:.1}", value) } else { write!(out, "{}", value) },
             JsonElement::ConstantInt(value) => write!(out, "{}", value),
             JsonElement::ConstantString(value) => write!(out, "\"{}\"", value),
 
             JsonElement::Object(fields) => self.write_object(fields, out),
             JsonElement::Array(elements) => self.write_array(elements, out),
 
+            JsonElement::Module(_) | JsonElement::Template(_) => write!(out, "Error"),
             JsonElement::Error => write!(out, "null"),
         }
     }
 
-    fn write_object(&mut self, fields: Vec<(String, JsonElement)>, out: &mut impl Write) -> Result<(), std::io::Error> {
+    fn write_object(&mut self, fields: &Vec<(String, JsonElement)>, out: &mut impl Write) -> Result<(), std::io::Error> {
         write!(out, "{{")?;
 
         if self.pretty {
@@ -71,7 +72,7 @@ impl JsonWriter {
         Ok(())
     }
 
-    fn write_array(&mut self, elements: Vec<JsonElement>, out: &mut impl Write) -> Result<(), std::io::Error> {
+    fn write_array(&mut self, elements: &Vec<JsonElement>, out: &mut impl Write) -> Result<(), std::io::Error> {
         write!(out, "[")?;
 
         if self.pretty {

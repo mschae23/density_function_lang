@@ -1,7 +1,10 @@
+use std::cell::RefCell;
 use std::fmt::{Debug, Formatter};
+use std::path::PathBuf;
+use std::rc::{Rc, Weak};
 use crate::compiler::lexer::Token;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum Stmt {
     Template {
         name: Token,
@@ -12,6 +15,18 @@ pub enum Stmt {
     Function {
         name: Token,
         expr: Expr,
+    },
+
+    Module {
+        name: Token,
+        statements: Vec<Stmt>,
+    },
+    Include {
+        path: Token,
+    },
+    Import {
+        path: Vec<Token>,
+        selector: Option<Vec<Token>>,
     },
 
     Error,
@@ -28,12 +43,21 @@ impl Debug for Stmt {
             Stmt::Function { name, expr } =>
                 write!(f, "function {} = {:?};", name.source(), expr),
 
+            Stmt::Module { name, statements } =>
+                write!(f, "module {} {{ {} }}", name.source(), statements.iter().map(|stmt| format!("{:?}", stmt))
+                    .collect::<Vec<String>>().join(" ")),
+            Stmt::Include { path } => write!(f, "include \"{}\";", path.source()),
+            Stmt::Import { path, selector } => write!(f, "{}.{}",
+                path.iter().map(|name| name.source().to_owned()).collect::<Vec<String>>().join("."),
+                selector.as_ref().map(|names| names.iter().map(|name| name.source().to_owned()).collect::<Vec<String>>().join(", "))
+                    .map(|names| format!("{{{}}}", names)).unwrap_or_else(|| String::from("*"))),
+
             Stmt::Error => write!(f, "Error;")
         }
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum Expr {
     ConstantFloat(f32),
     ConstantInt(i32),
@@ -103,6 +127,29 @@ impl Debug for Expr {
     }
 }
 
+#[derive(Debug)]
+pub struct OutputFunction {
+    pub name: String,
+    pub path: PathBuf,
+    pub json: JsonElement,
+}
+
+#[derive(Debug)]
+pub struct Template {
+    pub name: String, // Can be identifiers or operator names (like `+`)
+    pub args: Vec<String>,
+    pub expr: Expr,
+    pub current_modules: Vec<Weak<RefCell<Module>>>,
+}
+
+#[derive(Debug)]
+pub struct Module {
+    pub name: String,
+    pub sub_modules: Vec<Rc<RefCell<Module>>>,
+    pub templates: Vec<Rc<RefCell<Template>>>,
+    pub output_functions: Vec<Rc<RefCell<OutputFunction>>>,
+}
+
 #[derive(Clone)]
 pub enum JsonElement {
     ConstantFloat(f32),
@@ -111,6 +158,9 @@ pub enum JsonElement {
 
     Object(Vec<(String, JsonElement)>),
     Array(Vec<JsonElement>),
+
+    Module(Rc<RefCell<Module>>),
+    Template(Rc<RefCell<Template>>),
 
     Error,
 }
@@ -127,6 +177,9 @@ impl Debug for JsonElement {
             JsonElement::Array(elements) => write!(f, "[{}]", elements.iter()
                 .map(|element| format!("{:?}", element)).collect::<Vec<String>>()
                 .join(", ")),
+
+            JsonElement::Module(module) => write!(f, "<module {}>", &module.borrow().name),
+            JsonElement::Template(template) => write!(f, "<template {}>", &template.borrow().name),
             JsonElement::Error => write!(f, "Error"),
         }
     }

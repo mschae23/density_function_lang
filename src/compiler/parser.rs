@@ -1,21 +1,37 @@
+use std::path::{Path, PathBuf};
 use lazy_static::lazy_static;
 #[allow(unused)]
 use crate::debug;
 use crate::compiler::lexer::{Lexer, LexerError, Token, TokenPos, TokenType};
 use crate::compiler::ast::{Expr, Stmt};
 
+lazy_static! {
+    static ref ALLOWED_TEMPLATE_NAME_TYPES: [TokenType; 15] = [
+        TokenType::Identifier,
+        TokenType::Plus, TokenType::Minus, TokenType::Multiply, TokenType::Divide,
+        TokenType::Equal, TokenType::NotEqual,
+        TokenType::Greater, TokenType::GreaterEqual,
+        TokenType::Less, TokenType::LessEqual,
+        TokenType::And, TokenType::ShortcircuitAnd,
+        TokenType::Or, TokenType::ShortcircuitOr,
+    ];
+}
+
 pub struct Parser<'source> {
     lexer: Lexer<'source>,
     previous: Token, current: Token,
+
+    path: PathBuf,
 
     had_error: bool,
     panic_mode: bool,
 }
 
 impl<'source> Parser<'source> {
-    pub fn new(lexer: Lexer<'_>) -> Parser<'_> {
+    pub fn new(lexer: Lexer<'_>, path: PathBuf) -> Parser<'_> {
         Parser {
             lexer,
+            path,
             previous: Token::empty(), current: Token::empty(),
             had_error: false, panic_mode: false,
         }
@@ -44,6 +60,12 @@ impl<'source> Parser<'source> {
             return self.parse_function_statement();
         } else if self.matches(TokenType::Template) {
             return self.parse_template_statement();
+        } else if self.matches(TokenType::Module) {
+            return self.parse_module_statement();
+        } else if self.matches(TokenType::Include) {
+            return self.parse_include_statement();
+        } else if self.matches(TokenType::Import) {
+            return self.parse_import_statement();
         }
 
         let stmt = self.parse_statement();
@@ -68,17 +90,6 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_template_statement(&mut self) -> Stmt {
-        lazy_static! {
-            static ref ALLOWED_TEMPLATE_NAME_TYPES: [TokenType; 15] = [
-                TokenType::Identifier,
-                TokenType::Plus, TokenType::Minus, TokenType::Multiply, TokenType::Divide,
-                TokenType::Equal, TokenType::NotEqual,
-                TokenType::Greater, TokenType::GreaterEqual,
-                TokenType::Less, TokenType::LessEqual,
-                TokenType::And, TokenType::ShortcircuitAnd,
-                TokenType::Or, TokenType::ShortcircuitOr,
-            ];
-        }
 
         self.expect_any(&*ALLOWED_TEMPLATE_NAME_TYPES, "Expected name after 'template'");
         let name = self.previous.clone();
@@ -111,6 +122,85 @@ impl<'source> Parser<'source> {
         Stmt::Template { name, args: arguments, expr }
     }
 
+    fn parse_module_statement(&mut self) -> Stmt {
+        self.expect(TokenType::Identifier, "Expected name after 'module'");
+        let name = self.previous.clone();
+
+        self.expect(TokenType::BracketLeft, "Expected '{' after module name");
+
+        let mut statements = Vec::new();
+
+        while !self.check(TokenType::BracketRight) {
+            statements.push(self.parse_declaration());
+        }
+
+        self.expect(TokenType::BracketRight, "Expected '}' after statements in module");
+        self.expect_statement_end();
+        Stmt::Module { name, statements }
+    }
+
+    fn parse_include_statement(&mut self) -> Stmt {
+        self.expect(TokenType::String, "Expected string after 'include'");
+        let name = self.previous.clone();
+        self.expect_statement_end();
+
+        Stmt::Include { path: name }
+    }
+
+    fn parse_import_statement(&mut self) -> Stmt {
+        let mut path = vec![];
+        let mut selector = None;
+
+        self.expect(TokenType::Identifier, "Expected name after 'import'");
+        let name = self.previous.clone();
+        path.push(name);
+
+        if !self.check(TokenType::Dot) {
+            self.error_at_current("Expected '.' after name", true);
+        }
+
+        while self.matches(TokenType::Dot) {
+            if self.matches(TokenType::Multiply) {
+                break;
+            } else if self.matches(TokenType::BracketLeft) {
+                let mut names = vec![];
+
+                self.expect_any(&*ALLOWED_TEMPLATE_NAME_TYPES, "Expected name after '{'");
+                let name = self.previous.clone();
+                names.push(name);
+
+                while self.matches(TokenType::Comma) {
+                    if self.check(TokenType::BracketRight) {
+                        break;
+                    }
+
+                    self.expect_any(&*ALLOWED_TEMPLATE_NAME_TYPES, "Expected name after ','");
+                    let name = self.previous.clone();
+                    names.push(name);
+                }
+
+                self.expect(TokenType::BracketRight, "Expected '}' after names");
+                selector = Some(names);
+                break;
+            }
+
+            self.expect_any(&*ALLOWED_TEMPLATE_NAME_TYPES, "Expected name after '.'");
+            let name = self.previous.clone();
+
+            if !self.check(TokenType::Semicolon) && name.token_type() != TokenType::Identifier {
+                self.error("Expected name after '.'", true);
+            } else if self.check(TokenType::Semicolon) {
+                selector = Some(vec![name]);
+                break;
+            }
+
+            path.push(name);
+        }
+
+        self.expect_statement_end();
+        Stmt::Import { path, selector }
+    }
+
     fn parse_statement(&mut self) -> Stmt {
         self.error_at_current("Expected statement", true);
         Stmt::Error
@@ -138,7 +228,7 @@ impl<'source> Parser<'source> {
     fn parse_factor(&mut self) -> Expr {
         let mut expr = self.parse_unary();
 
-        while self.matches(TokenType::Multiply) {
+        while self.matches_any(&[TokenType::Multiply, TokenType::Divide]) {
             let operator = self.previous.clone();
             let right = self.parse_unary();
 
@@ -398,22 +488,22 @@ impl<'source> Parser<'source> {
     // Error handling
 
     fn error_at_current(&mut self, message: &str, panic: bool) {
-        Self::error_at(&mut self.had_error, &mut self.panic_mode, Some(&self.current), message, panic);
+        Self::error_at(&mut self.had_error, &mut self.panic_mode, &self.path, Some(&self.current), message, panic);
     }
 
     fn error(&mut self, message: &str, panic: bool) {
-        Self::error_at(&mut self.had_error, &mut self.panic_mode, Some(&self.previous), message, panic);
+        Self::error_at(&mut self.had_error, &mut self.panic_mode, &self.path, Some(&self.previous), message, panic);
     }
 
     fn error_from_parser(&mut self, error: &LexerError) {
         if let Some(pos) = error.get_pos() {
-            eprint!("{} ", pos);
+            eprint!("[{}:{}:{}] ", self.path.to_string_lossy(), pos.line, pos.column);
         }
 
-        Self::error_at(&mut self.had_error, &mut self.panic_mode, None, &error.to_string(), true);
+        Self::error_at(&mut self.had_error, &mut self.panic_mode, &self.path, None, &error.to_string(), true);
     }
 
-    fn error_at(had_error: &mut bool, panic_mode: &mut bool, token: Option<&Token>, message: &str, panic: bool) {
+    fn error_at(had_error: &mut bool, panic_mode: &mut bool, path: &Path, token: Option<&Token>, message: &str, panic: bool) {
         if *panic_mode {
             return;
         } else if panic {
@@ -421,7 +511,7 @@ impl<'source> Parser<'source> {
         }
 
         if let Some(token) = token {
-            eprint!("{} Error", token.start());
+            eprint!("[{}:{}:{}] Error", path.to_string_lossy(), token.start().line, token.start().column);
 
             if token.token_type() == TokenType::Eof {
                 eprint!(" at EOF: ");

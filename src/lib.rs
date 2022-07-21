@@ -1,9 +1,12 @@
 pub mod util;
 pub mod compiler;
 
+use std::cell::RefCell;
 use std::io::Write;
 use std::path::PathBuf;
+use std::rc::Rc;
 use clap::Parser as ClapParser;
+use crate::compiler::ast::OutputFunction;
 use crate::compiler::compiler::Compiler;
 use crate::compiler::lexer::Lexer;
 use crate::compiler::parser::Parser;
@@ -21,41 +24,49 @@ pub struct Config {
     pub verbose: bool,
 }
 
-pub fn run() -> Result<(), std::io::Error> {
-    let config: Config = Config::parse();
-
-    let source = std::fs::read_to_string(config.input)?;
-    std::fs::create_dir_all(&config.target_dir)?;
+pub fn compile(path: PathBuf, target_dir: PathBuf) -> Result<Option<(Vec<Rc<RefCell<OutputFunction>>>, Compiler)>, std::io::Error> {
+    let source = std::fs::read_to_string(path.to_owned())?;
 
     let lexer = Lexer::new(&source);
-    let mut parser = Parser::new(lexer);
+    let mut parser = Parser::new(lexer, path.to_owned());
     let statements = parser.parse();
 
     if parser.had_error() {
-        return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
+        return Ok(None);
     }
 
-    let compiler = Compiler::new();
-    let (functions, had_error) = compiler.compile(statements);
+    let mut compiler = Compiler::new(path.to_owned(), target_dir.to_owned());
+    let functions = compiler.compile(statements);
 
-    if had_error {
-        return Err(std::io::Error::from(std::io::ErrorKind::InvalidData));
+    if compiler.had_error() {
+        return Ok(None);
     }
 
+    Ok(Some((functions, compiler)))
+}
+
+pub fn run() -> Result<(), std::io::Error> {
+    let config: Config = Config::parse();
+
+    let (functions, _) = match compile(config.input.to_owned(), config.target_dir.to_owned())? {
+        Some(result) => result,
+        None => return Err(std::io::Error::from(std::io::ErrorKind::InvalidData)),
+    };
+
+    std::fs::create_dir_all(&config.target_dir)?;
     let mut writer = JsonWriter::new(String::from("    "), true);
 
-    let mut path = config.target_dir.clone();
+    for function in functions {
+        let function = &*function.borrow();
 
-    for (name, element) in functions {
-        path.push(name);
-        path.set_extension("json");
+        if let Some(parent) = function.path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
 
-        let mut file = std::fs::File::create(&path)?;
+        let mut file = std::fs::File::create(&function.path)?;
 
-        writer.write_element(element, &mut file)?;
+        writer.write_element(&function.json, &mut file)?;
         file.write_all(b"\n")?;
-
-        path.pop();
     }
 
     Ok(())

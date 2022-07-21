@@ -52,9 +52,11 @@ pub enum TokenType {
     String,
 
     // Keywords
+    Builtin,
     Inline,
     Template,
     Function,
+    Module, Include, Import,
 
     // EOF
     Eof,
@@ -313,8 +315,26 @@ impl<'source> Lexer<'source> {
         let mut chars = name.chars();
 
         let token_type = match chars.next().expect("Internal compiler error: Empty identifier") {
+            'b' => Lexer::check_keyword(name, 1, "builtin", TokenType::Builtin),
             'f' => Lexer::check_keyword(name, 1, "function", TokenType::Function),
-            'i' => Lexer::check_keyword(name, 1, "inline", TokenType::Inline),
+            'i' => {
+                if let Some(c) = chars.next() {
+                    match c {
+                        'n' => {
+                            if let Some(c) = chars.next() {
+                                match c {
+                                    'c' => Lexer::check_keyword(name, 3, "include", TokenType::Include),
+                                    'l' => Lexer::check_keyword(name, 3, "inline", TokenType::Inline),
+                                    _ => TokenType::Identifier,
+                                }
+                            } else { TokenType::Identifier }
+                        },
+                        'm' => Lexer::check_keyword(name, 2, "import", TokenType::Import),
+                        _ => TokenType::Identifier,
+                    }
+                } else { TokenType::Identifier }
+            },
+            'm' => Lexer::check_keyword(name, 1, "module", TokenType::Module),
             't' => Lexer::check_keyword(name, 1, "template", TokenType::Template),
             _ => TokenType::Identifier,
         };
