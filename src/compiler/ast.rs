@@ -8,6 +8,7 @@ use crate::compiler::lexer::Token;
 pub enum Stmt {
     Template {
         name: Token,
+        this: Option<Token>,
         args: Vec<Token>,
         expr: Expr,
     },
@@ -35,10 +36,12 @@ pub enum Stmt {
 impl Debug for Stmt {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Stmt::Template { name, args, expr } =>
-                write!(f, "template {}({}) = {:?};", name.source(), args.iter()
-                    .map(|arg| arg.source().to_owned())
-                    .collect::<Vec<String>>().join(", "), expr),
+            Stmt::Template { name, this, args, expr } =>
+                write!(f, "template {}({}{}) = {:?};", name.source(),
+                    this.as_ref().map(|this| format!("{}, ", this.source())).unwrap_or_else(|| String::new()),
+                    args.iter()
+                        .map(|arg| arg.source().to_owned())
+                        .collect::<Vec<String>>().join(", "), expr),
 
             Stmt::Function { name, expr } =>
                 write!(f, "function {} = {:?};", name.source(), expr),
@@ -64,8 +67,6 @@ pub enum Expr {
     ConstantString(String),
     Identifier(Token),
 
-    Group(Box<Expr>),
-
     UnaryOperator {
         operator: Token,
         expr: Box<Expr>,
@@ -76,8 +77,8 @@ pub enum Expr {
         right: Box<Expr>,
     },
     FunctionCall {
-        receiver: Option<Box<Expr>>,
-        name: Token,
+        callee: Box<Expr>,
+        paren_left: Token,
         args: Vec<Expr>,
     },
     Member {
@@ -98,17 +99,10 @@ impl Debug for Expr {
             Expr::ConstantInt(value) => write!(f, "{}", value),
             Expr::ConstantString(value) => write!(f, "\"{}\"", value),
             Expr::Identifier(value) => write!(f, "{}", value.source()),
-            Expr::Group(expr) => write!(f, "{:?}", expr),
             Expr::UnaryOperator { operator, expr } => write!(f, "({}{:?})", operator.source(), expr),
             Expr::BinaryOperator { left, operator, right } => write!(f, "({:?} {} {:?})", left, operator.source(), right),
-            Expr::FunctionCall { receiver, name, args } => {
-                write!(f, "(")?;
-
-                if let Some(receiver) = receiver {
-                    write!(f, "{:?}.", receiver)?;
-                }
-
-                write!(f, "{}({}))", name, args.iter()
+            Expr::FunctionCall { callee, args, .. } => {
+                write!(f, "({:?}({}))", callee, args.iter()
                     .map(|expr| format!("{:?}", expr))
                     .collect::<Vec<String>>().join(", "))
             },
@@ -137,6 +131,7 @@ pub struct OutputFunction {
 #[derive(Debug)]
 pub struct Template {
     pub name: String, // Can be identifiers or operator names (like `+`)
+    pub receiver: bool,
     pub args: Vec<String>,
     pub expr: Expr,
     pub current_modules: Vec<Weak<RefCell<Module>>>,

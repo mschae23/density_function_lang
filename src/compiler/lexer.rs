@@ -54,7 +54,7 @@ pub enum TokenType {
     // Keywords
     Builtin,
     Inline,
-    Template,
+    Template, This,
     Function,
     Module, Include, Import,
 
@@ -343,7 +343,15 @@ impl<'source> Lexer<'source> {
                 } else { TokenType::Identifier }
             },
             'm' => Lexer::check_keyword(name, 1, "module", TokenType::Module),
-            't' => Lexer::check_keyword(name, 1, "template", TokenType::Template),
+            't' => {
+                if let Some(c) = chars.next() {
+                    match c {
+                        'e' => Lexer::check_keyword(name, 2, "template", TokenType::Template),
+                        'h' => Lexer::check_keyword(name, 2, "this", TokenType::This),
+                        _ => TokenType::Identifier,
+                    }
+                } else { TokenType::Identifier }
+            },
             _ => TokenType::Identifier,
         };
 

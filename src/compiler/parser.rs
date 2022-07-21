@@ -90,12 +90,21 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_template_statement(&mut self) -> Stmt {
-
         self.expect_any(&*ALLOWED_TEMPLATE_NAME_TYPES, "Expected name after 'template'");
         let name = self.previous.clone();
 
         self.expect(TokenType::ParenthesisLeft, "Expected '(' after template name");
         let mut arguments = vec![];
+        let mut this = None;
+
+        if self.matches(TokenType::This) {
+            let name = self.previous.clone();
+            this = Some(name);
+
+            if !self.check(TokenType::ParenthesisRight) {
+                self.expect(TokenType::Comma, "Expected ',' or ')' after 'this'");
+            }
+        }
 
         if !self.check(TokenType::ParenthesisRight) {
             self.expect(TokenType::Identifier, "Expected template parameter name after '('");
@@ -119,7 +128,7 @@ impl<'source> Parser<'source> {
         let expr = self.parse_expression();
         self.expect_statement_end();
 
-        Stmt::Template { name, args: arguments, expr }
+        Stmt::Template { name, this, args: arguments, expr }
     }
 
     fn parse_module_statement(&mut self) -> Stmt {
@@ -269,12 +278,7 @@ impl<'source> Parser<'source> {
     }
 
     fn finish_call(&mut self, callee: Expr) -> Expr {
-        match &callee {
-            Expr::Member { .. } => {},
-            Expr::Identifier(_) => {},
-            _ =>
-                self.error(&format!("Cannot call non-identifier expression: {:?}", &callee), true),
-        };
+        let paren_left = self.previous.clone();
 
         let mut arguments = vec![];
 
@@ -291,14 +295,7 @@ impl<'source> Parser<'source> {
         }
 
         self.expect(TokenType::ParenthesisRight, "Expected ')' after function call arguments");
-
-        match callee {
-            Expr::Member { receiver, name } =>
-                Expr::FunctionCall { receiver: Some(receiver), name, args: arguments },
-            Expr::Identifier(name) =>
-                Expr::FunctionCall { receiver: None, name, args: arguments },
-            _ => Expr::Error,
-        }
+        Expr::FunctionCall { callee: Box::new(callee), paren_left, args: arguments }
     }
 
     fn parse_primary(&mut self) -> Expr {
@@ -324,7 +321,7 @@ impl<'source> Parser<'source> {
                     Expr::Error
                 },
             }
-        } else if self.matches(TokenType::Identifier) {
+        } else if self.matches(TokenType::Identifier) || self.matches(TokenType::This) {
             return Expr::Identifier(self.previous.clone())
         } else if self.matches(TokenType::String) {
             return Expr::ConstantString(self.previous.source().to_owned())
@@ -332,7 +329,7 @@ impl<'source> Parser<'source> {
             let expr = self.parse_expression();
             self.expect(TokenType::ParenthesisRight, "Expected ')' after expression");
 
-            return Expr::Group(Box::new(expr));
+            return expr;
         } else if self.matches(TokenType::BracketLeft) {
             return self.parse_object_expression();
         } else if self.matches(TokenType::SquareBracketLeft) {

@@ -54,7 +54,7 @@ impl Compiler {
 
     fn compile_statement(&mut self, stmt: Stmt) {
         match stmt {
-            Stmt::Template { name, args, expr } => self.compile_template(name, args, expr),
+            Stmt::Template { name, this, args, expr } => self.compile_template(name, this, args, expr),
             Stmt::Function { name, expr } => self.compile_function(name, expr),
             Stmt::Module { name, statements } => self.compile_module(name, statements),
             Stmt::Include { path } => self.compile_include(path),
@@ -63,11 +63,12 @@ impl Compiler {
         }
     }
 
-    fn compile_template(&mut self, name: Token, args: Vec<Token>, expr: Expr) {
+    fn compile_template(&mut self, name: Token, this: Option<Token>, args: Vec<Token>, expr: Expr) {
         let current_module = self.current_module();
         let mut current_module = current_module.borrow_mut();
 
-        if current_module.templates.iter().any(|template| *template.borrow().name == *name.source() && template.borrow().args.len() == args.len()) {
+        if current_module.templates.iter().any(|template|
+            *template.borrow().name == *name.source() && template.borrow().args.len() == args.len() && template.borrow().receiver == this.is_some()) {
             self.error_at(*name.start(), "Tried to define multiple templates with the same name", false);
             return;
         }
@@ -77,6 +78,7 @@ impl Compiler {
 
         current_module.templates.push(Rc::new(RefCell::new(Template {
             name: name.source().to_owned(),
+            receiver: this.is_some(),
             args: args.iter().map(|arg| arg.source().to_owned()).collect(),
             expr,
             current_modules: template_current_modules,
@@ -265,33 +267,31 @@ impl Compiler {
                 if let Some((_, element)) = self.template_scopes.last().map(|scope| scope.args.iter().rfind(|(arg, _)| *arg == *name.source())).flatten() {
                     element.clone()
                 } else {
-                    self.error_at(*name.start(), &format!("Unresolved reference: '{}'", name.source()), false);
-                    JsonElement::Error
+                    self.evaluate_identifier(name)
                 }
             }
-            Expr::Group(expr) => self.compile_expr(*expr),
+            // Expr::Group(expr) => self.compile_expr(*expr),
             Expr::UnaryOperator { operator, expr } => {
                 let compiled_expr = self.compile_expr(*expr);
 
-                self.evaluate_template(None, operator, vec![compiled_expr])
+                let pos = *operator.start();
+                self.evaluate_template(Expr::Identifier(operator), pos, vec![compiled_expr])
             },
             Expr::BinaryOperator { left, operator, right } => {
                 let compiled_left = self.compile_expr(*left);
                 let compiled_right = self.compile_expr(*right);
 
-                self.evaluate_template(None, operator, vec![compiled_left, compiled_right])
+                let pos = *operator.start();
+                self.evaluate_template(Expr::Identifier(operator), pos, vec![compiled_left, compiled_right])
             },
-            Expr::FunctionCall { receiver, name, args } => {
-                let compiled_receiver = receiver.map(|receiver| self.compile_expr(*receiver));
+            Expr::FunctionCall { callee, paren_left, args } => {
                 let compiled_args = args.into_iter().map(|arg| self.compile_expr(arg)).collect();
 
-                self.evaluate_template(compiled_receiver, name, compiled_args)
+                self.evaluate_template(*callee, *paren_left.start(), compiled_args)
             },
             Expr::Member { receiver, name } => {
-                let _ = self.compile_expr(*receiver);
-
-                self.error_at(*name.start(), &format!("Unresolved reference: '{}'", name.source()), false);
-                JsonElement::Error
+                let compiled_receiver = self.compile_expr(*receiver);
+                self.evaluate_member(compiled_receiver, name)
             },
             Expr::Object(fields) => {
                 JsonElement::Object(fields.into_iter().map(|(name, field)| (name.source().to_owned(), self.compile_expr(field))).collect())
@@ -303,21 +303,32 @@ impl Compiler {
         }
     }
 
-    fn evaluate_template(&mut self, receiver: Option<JsonElement>, name: Token, args: Vec<JsonElement>) -> JsonElement {
-        if let Some(_) = receiver {
-            self.error_at(*name.start(), "Member functions are not implemented yet", false);
-        }
+    fn evaluate_template(&mut self, callee: Expr, token_pos: TokenPos, args: Vec<JsonElement>) -> JsonElement {
+        let (receiver, name) = match callee {
+            Expr::Member { receiver, name} => (Some(self.compile_expr(*receiver)), name),
+            Expr::Identifier(name) => (None, name),
+            _ => {
+                self.error_at(token_pos, "Cannot call non-identifier expression", true);
+                return JsonElement::Error;
+            },
+        };
 
-        let template = match self.find_template(&name, args.len()) {
+        let template = match self.find_template(&name, receiver.as_ref(), args.len()) {
             Some(template) => template,
             None => {
                 self.error_at(*name.start(), &format!("Unresolved function call: {}", name.source()), false);
                 return JsonElement::Error;
-            },
+            }
         };
         let template_borrow = template.borrow();
 
         let mut scope_args = vec![];
+        // eprintln!("name: {}; template receiver: {}; provided receiver: {}; template args: {:?}; provided args: {:?}",
+        //     &template_borrow.name, template_borrow.receiver, receiver.is_some(), &template_borrow.args, &args);
+
+        if let Some(receiver) = receiver {
+            scope_args.push((String::from("this"), receiver));
+        }
 
         for i in 0..template_borrow.args.len() {
             let name = template_borrow.args[i].clone();
@@ -346,7 +357,14 @@ impl Compiler {
         expr
     }
 
-    fn find_template(&mut self, name: &Token, arg_count: usize) -> Option<Rc<RefCell<Template>>> {
+    fn find_template(&mut self, name: &Token, receiver: Option<&JsonElement>, arg_count: usize) -> Option<Rc<RefCell<Template>>> {
+        if let Some(receiver) = receiver {
+            match receiver {
+                JsonElement::Module(module) => return Self::find_template_on(module, name, false, arg_count),
+                _ => {},
+            }
+        }
+
         let mut module_index: isize = self.current_module.len() as isize - 1;
 
         while module_index >= -1 {
@@ -354,7 +372,7 @@ impl Compiler {
                 &self.current_module[module_index as usize]
             } else { &self.top_level_module });
 
-            if let Some(template) = Self::find_template_on(&module, &name, arg_count) {
+            if let Some(template) = Self::find_template_on(&module, &name, receiver.is_some(), arg_count) {
                 return Some(template);
             }
 
@@ -364,14 +382,66 @@ impl Compiler {
         None
     }
 
-    fn find_template_on(module: &Rc<RefCell<Module>>, name: &Token, arg_count: usize) -> Option<Rc<RefCell<Template>>> {
+    fn find_template_on(module: &Rc<RefCell<Module>>, name: &Token, receiver: bool, arg_count: usize) -> Option<Rc<RefCell<Template>>> {
         for template in &module.borrow().templates {
-            if *template.borrow().name == *name.source() && template.borrow().args.len() == arg_count {
+            if *template.borrow().name == *name.source() && template.borrow().args.len() == arg_count && (template.borrow().receiver == receiver) {
                 return Some(Rc::clone(template));
             }
         }
 
         None
+    }
+
+    fn evaluate_identifier(&mut self, name: Token) -> JsonElement {
+        let mut module_index: isize = self.current_module.len() as isize - 1;
+
+        while module_index >= -1 {
+            let module = Rc::clone(if module_index >= 0 {
+                &self.current_module[module_index as usize]
+            } else { &self.top_level_module });
+
+            for template in &module.borrow().templates {
+                if *template.borrow().name == *name.source() && !template.borrow().receiver {
+                    return JsonElement::Template(Rc::clone(template));
+                }
+            }
+
+            for sub_module in &module.borrow().sub_modules {
+                if *sub_module.borrow().name == *name.source() {
+                    return JsonElement::Module(Rc::clone(sub_module));
+                }
+            }
+
+            module_index -= 1;
+        }
+
+        self.error_at(*name.start(), &format!("Unresolved reference: '{}'", name.source()), false);
+        JsonElement::Error
+    }
+
+    fn evaluate_member(&mut self, receiver: JsonElement, name: Token) -> JsonElement {
+        match receiver {
+            JsonElement::Module(module) => {
+                for template in &module.borrow().templates {
+                    if *template.borrow().name == *name.source() {
+                        return JsonElement::Template(Rc::clone(template));
+                    }
+                }
+
+                for sub_module in &module.borrow().sub_modules {
+                    if *sub_module.borrow().name == *name.source() {
+                        return JsonElement::Module(Rc::clone(sub_module));
+                    }
+                }
+
+                self.error_at(*name.start(), &format!("Unresolved reference: '{}'", name.source()), false);
+                JsonElement::Error
+            },
+            _ => {
+                self.error_at(*name.start(), "Tried to get a member of non-module value", true);
+                JsonElement::Error
+            },
+        }
     }
 
     fn current_module(&self) -> Rc<RefCell<Module>> {

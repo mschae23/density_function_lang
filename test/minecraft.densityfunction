@@ -74,6 +74,22 @@ module df {
 
     // TODO template spline(...) = ...
 
+    // Member templates
+    template add(this, other) = add(this, other);
+
+    template abs(this) = abs(this);
+    template square(this) = square(this);
+    template cube(this) = cube(this);
+    template half_negative(this) = half_negative(this);
+    template quarter_negative(this) = quarter_negative(this);
+    template squeeze(this) = squeeze(this);
+    
+    template interpolated(this) = interpolated(this);
+    template flat_cache(this) = flat_cache(this);
+    template cache_2d(this) = cache_2d(this);
+    template cache_once(this) = cache_once(this);
+    template cache_all_in_cell(this) = cache_all_in_cell(this);
+
     // + and * operators
     template +(left, right) = add(left, right);
     template *(left, right) = mul(left, right);

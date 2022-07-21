@@ -18,7 +18,7 @@ module overworld {
     // function jaggedness = flat_cache(cache_2d(...));
 
     function ridges = flat_cache(shifted_noise("minecraft:shift_x", 0.0, "minecraft:shift_z", 0.25, 0.0, "minecraft:ridge"));
-    function ridges_folded = -3.0 * (-0.3333333333333333 + abs(-0.6666666666666666 + abs("minecraft:overworld/ridges")));
+    function ridges_folded = -3.0 * (-0.3333333333333333 + (-0.6666666666666666 + "minecraft:overworld/ridges".abs()).abs());
 
     function sloped_cheese = 4.0 * quarter_negative(
         ("minecraft:overworld/depth" + "minecraft:overworld/jaggedness" * half_negative(noise("minecraft:jagged", 1500.0, 0.0)))
