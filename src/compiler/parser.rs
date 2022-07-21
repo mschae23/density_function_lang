@@ -304,7 +304,7 @@ impl<'source> Parser<'source> {
     fn parse_primary(&mut self) -> Expr {
         if self.matches(TokenType::Float) {
             let number = self.previous.clone();
-            let parsed: Result<f32, _> = number.source().parse();
+            let parsed: Result<f64, _> = number.source().parse();
 
             return match parsed {
                 Ok(number) => Expr::ConstantFloat(number),

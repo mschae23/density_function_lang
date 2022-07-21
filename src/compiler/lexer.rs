@@ -231,9 +231,17 @@ impl<'source> Lexer<'source> {
                 '+' => Ok(if self.expect('=')? { self.make_token(TokenType::PlusAssign) } else {
                     self.make_token(TokenType::Plus)
                 }),
-                '-' => Ok(if self.expect('=')? { self.make_token(TokenType::MinusAssign) } else {
-                    self.make_token(TokenType::Minus)
-                }),
+                '-' => {
+                    let next = self.peek()?;
+
+                    if next >= '0' && next <= '9' {
+                        self.scan_number()
+                    } else {
+                        Ok(if self.expect('=')? { self.make_token(TokenType::MinusAssign) } else {
+                            self.make_token(TokenType::Minus)
+                        })
+                    }
+                },
                 '*' => Ok(if self.expect('=')? { self.make_token(TokenType::MultiplyAssign) } else {
                     self.make_token(TokenType::Multiply)
                 }),

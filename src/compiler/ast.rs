@@ -59,7 +59,7 @@ impl Debug for Stmt {
 
 #[derive(Clone, PartialEq)]
 pub enum Expr {
-    ConstantFloat(f32),
+    ConstantFloat(f64),
     ConstantInt(i32),
     ConstantString(String),
     Identifier(Token),
@@ -152,7 +152,7 @@ pub struct Module {
 
 #[derive(Clone)]
 pub enum JsonElement {
-    ConstantFloat(f32),
+    ConstantFloat(f64),
     ConstantInt(i32),
     ConstantString(String),
 

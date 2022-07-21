@@ -303,10 +303,7 @@ impl Compiler {
             self.error_at(*name.start(), "Member functions are not implemented yet", false);
         }
 
-        let current_module = self.current_module();
-        let current_module = current_module.borrow();
-
-        let template = match current_module.templates.iter().find(|template| *template.borrow().name == *name.source() && template.borrow().args.len() == args.len()) {
+        let template = match self.find_template(&name, args.len()) {
             Some(template) => template,
             None => {
                 self.error_at(*name.start(), &format!("Unresolved function call: {}", name.source()), false);
@@ -330,15 +327,44 @@ impl Compiler {
 
         let template_expr = template_borrow.expr.clone();
         drop(template_borrow);
-        drop(current_module);
 
         self.current_module.append(&mut template_current_modules);
+
+        // TODO Change path to the template's original file path for better error messages
 
         let expr = self.compile_expr(template_expr.clone());
         self.template_args.truncate(self.template_args.len().saturating_sub(arg_count));
         self.current_module.truncate(self.current_module.len().saturating_sub(template_current_modules_count));
 
         expr
+    }
+
+    fn find_template(&mut self, name: &Token, arg_count: usize) -> Option<Rc<RefCell<Template>>> {
+        let mut module_index: isize = self.current_module.len() as isize - 1;
+
+        while module_index >= -1 {
+            let module = Rc::clone(if module_index >= 0 {
+                &self.current_module[module_index as usize]
+            } else { &self.top_level_module });
+
+            if let Some(template) = Self::find_template_on(&module, &name, arg_count) {
+                return Some(template);
+            }
+
+            module_index -= 1;
+        }
+
+        None
+    }
+
+    fn find_template_on(module: &Rc<RefCell<Module>>, name: &Token, arg_count: usize) -> Option<Rc<RefCell<Template>>> {
+        for template in &module.borrow().templates {
+            if *template.borrow().name == *name.source() && template.borrow().args.len() == arg_count {
+                return Some(Rc::clone(template));
+            }
+        }
+
+        None
     }
 
     fn current_module(&self) -> Rc<RefCell<Module>> {

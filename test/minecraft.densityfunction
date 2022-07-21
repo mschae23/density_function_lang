@@ -14,6 +14,15 @@ module df {
     template blend_offset() = simple_0("minecraft:blend_offset");
     template blend_density(arg) = simple_1("minecraft:blend_density", arg);
 
+    template beardifier() = simple_0("minecraft:beardifier");
+
+    template old_blended_noise(scale_xz, scale_y, factor_xz, factor_y, smear_scale_multiplier) = {
+        "type": "minecraft:old_blended_noise",
+        "xz_scale": scale_xz, "y_scale": scale_y,
+        "xz_factor": factor_xz, "y_factor": factor_y,
+        "smear_scale_multiplier": smear_scale_multiplier
+    };
+
     template clamp(arg, min, max) = { "type": "minecraft:clamp", "input": arg, "min": min, "max": max };
 
     template constant(value) = simple_0("minecraft:constant", value);
