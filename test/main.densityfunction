@@ -71,5 +71,5 @@ module overworld {
             (-0.05 + -0.05 * noise("minecraft:spaghetti_roughness_modulator", 1.0, 1.0)) *
                 (-0.4 + abs(noise("minecraft:spaghetti_roughness", 1.0, 1.0)))
         );
-    };
-};
+    }
+}

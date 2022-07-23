@@ -123,11 +123,9 @@ impl<'source> Parser<'source> {
         }
 
         self.expect(TokenType::ParenthesisRight, "Expected ')' after template parameters");
-        self.expect(TokenType::Assign, "Expected '=' after ')'");
+        self.expect(TokenType::BracketLeft, "Expected '{' after ')'");
 
-        let expr = self.parse_template_expression();
-        self.expect_statement_end();
-
+        let expr = self.parse_block_template_expression();
         Stmt::Template { name, this, args: arguments, expr }
     }
 
@@ -144,7 +142,6 @@ impl<'source> Parser<'source> {
         }
 
         self.expect(TokenType::BracketRight, "Expected '}' after statements in module");
-        self.expect_statement_end();
         Stmt::Module { name, statements }
     }
 
@@ -220,6 +217,20 @@ impl<'source> Parser<'source> {
 
     fn parse_template_expression(&mut self) -> TemplateExpr {
         TemplateExpr::Simple(self.parse_expression())
+    }
+
+    fn parse_block_template_expression(&mut self) -> TemplateExpr {
+        let mut expressions = vec![];
+
+        let mut expr = self.parse_template_expression();
+
+        while self.matches(TokenType::Semicolon) {
+            expressions.push(expr);
+            expr = self.parse_template_expression();
+        }
+
+        self.expect(TokenType::BracketRight, "Expected '}' after last expression in block");
+        TemplateExpr::Block { expressions, last: Box::new(expr) }
     }
 
     // Expression parsing
