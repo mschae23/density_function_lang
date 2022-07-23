@@ -8,27 +8,41 @@ struct TemplateScope {
     pub args: Vec<(String, JsonElement)>,
 }
 
+struct TemplateCall {
+    pub name: String,
+    pub receiver: bool,
+    pub arg_count: i32,
+
+    pub path: Rc<RefCell<PathBuf>>,
+    pub line: i32,
+    pub column: i32,
+}
+
 pub struct Compiler {
     current_module: Vec<Rc<RefCell<Module>>>,
     top_level_module: Rc<RefCell<Module>>,
     template_scopes: Vec<TemplateScope>,
+    template_call_stack: Vec<TemplateCall>,
 
     path: Rc<RefCell<PathBuf>>, target_dir: PathBuf,
 
     had_error: bool, panic_mode: bool,
+    verbose: bool,
 }
 
 impl Compiler {
-    pub fn new(path: PathBuf, target_dir: PathBuf) -> Compiler {
+    pub fn new(path: PathBuf, target_dir: PathBuf, verbose: bool) -> Compiler {
         Compiler {
             current_module: vec![],
             top_level_module: Rc::new(RefCell::new(Module { name: String::from("<top-level>"),
                 sub_modules: vec![], templates: vec![], exports: vec![] })),
             template_scopes: vec![],
+            template_call_stack: vec![],
 
             path: Rc::new(RefCell::new(path)), target_dir,
 
             had_error: false, panic_mode: false,
+            verbose,
         }
     }
 
@@ -147,7 +161,7 @@ impl Compiler {
             path.pop();
             path.push(&include_path);
 
-            let (mut functions, compiler) = match crate::compile(path, self.target_dir.to_owned()) {
+            let (mut functions, compiler) = match crate::compile(path, self.target_dir.to_owned(), self.verbose) {
                 Ok(Some(result)) => result,
                 Ok(None) => {
                     self.error_at(*include_path_token.start(), &format!("Error in included file: \"{}\"", include_path_token.source()), false);
@@ -284,7 +298,7 @@ impl Compiler {
                 let pos = *operator.start();
                 self.evaluate_template(Expr::Identifier(operator), pos, vec![compiled_left, compiled_right])
             },
-            Expr::FunctionCall { callee, paren_left, args } => {
+            Expr::FunctionCall { callee, token: paren_left, args } => {
                 let compiled_args = args.into_iter().map(|arg| self.compile_expr(arg)).collect();
 
                 self.evaluate_template(*callee, *paren_left.start(), compiled_args)
@@ -292,6 +306,11 @@ impl Compiler {
             Expr::Member { receiver, name } => {
                 let compiled_receiver = self.compile_expr(*receiver);
                 self.evaluate_member(compiled_receiver, name)
+            },
+            Expr::BuiltinFunctionCall { name, args } => {
+                let compiled_args = args.into_iter().map(|arg| self.compile_expr(arg)).collect();
+
+                self.evaluate_builtin_call(name, compiled_args)
             },
             Expr::Object(fields) => {
                 JsonElement::Object(fields.into_iter().map(|(name, field)| (name.source().to_owned(), self.compile_expr(field))).collect())
@@ -338,6 +357,13 @@ impl Compiler {
         }
 
         self.template_scopes.push(TemplateScope { args: scope_args });
+        self.template_call_stack.push(TemplateCall {
+            name: template_borrow.name.to_owned(),
+            receiver: template_borrow.receiver,
+            arg_count: template_borrow.args.len() as i32,
+            path: Rc::clone(&self.path),
+            line: token_pos.line, column: token_pos.column,
+        });
 
         let mut template_current_modules: Vec<Rc<RefCell<Module>>> = template_borrow.current_modules.iter()
             .map(|module| module.upgrade().expect("Internal compiler error: Module got dropped")).collect();
@@ -350,6 +376,7 @@ impl Compiler {
         std::mem::swap(&mut self.path, &mut template_file_path);
 
         let expr = self.compile_template_expr(template_expr.clone());
+        self.template_call_stack.pop();
         self.template_scopes.pop();
         std::mem::swap(&mut self.current_module, &mut template_current_modules);
         std::mem::swap(&mut self.path, &mut template_file_path);
@@ -403,6 +430,29 @@ impl Compiler {
         }
 
         None
+    }
+
+    fn evaluate_builtin_call(&mut self, name: Token, args: Vec<JsonElement>) -> JsonElement {
+        if "error" == name.source() {
+            return self.evaluate_builtin_error_call(name, args);
+        }
+
+        self.error_at(*name.start(), &format!("Unknown built-in function: '{}'", name.source()), false);
+        JsonElement::Error
+    }
+
+    fn evaluate_builtin_error_call(&mut self, name: Token, args: Vec<JsonElement>) -> JsonElement {
+        if args.len() == 0 {
+            self.error_at(*name.start(), "builtin.error() called", false);
+        } else if args.len() > 0 {
+            match &args[0] {
+                JsonElement::ConstantString(msg) =>
+                    self.error_at_with_context(*name.start(), &msg.to_owned(), args.into_iter().skip(1).collect(), false),
+                _ => self.error_at_with_context(*name.start(), "builtin.error() called", args, false),
+            }
+        }
+
+        JsonElement::Error
     }
 
     fn evaluate_identifier(&mut self, name: Token) -> JsonElement {
@@ -468,6 +518,10 @@ impl Compiler {
     }
 
     fn error_at(&mut self, pos: TokenPos, message: &str, panic: bool) {
+        self.error_at_with_context(pos, message, Vec::new(), panic)
+    }
+
+    fn error_at_with_context(&mut self, pos: TokenPos, message: &str, context: Vec<JsonElement>, panic: bool) {
         if self.panic_mode {
             return;
         } else if panic {
@@ -475,6 +529,32 @@ impl Compiler {
         }
 
         eprintln!("[{}:{}:{}] Error: {}", self.path.borrow().to_string_lossy(), pos.line, pos.column, message);
+
+        for context_element in &context {
+            eprintln!("    Context: {:?}", context_element);
+        }
+
+        if self.verbose && !context.is_empty() && !self.template_call_stack.is_empty() {
+            eprintln!();
+        }
+
+        if self.verbose {
+            for template_call in self.template_call_stack.iter().rev() {
+                let mut args = vec![];
+
+                if template_call.receiver {
+                    args.push(String::from("this"));
+                }
+
+                if template_call.arg_count > 0 {
+                    args.push(template_call.arg_count.to_string());
+                }
+
+                eprintln!("    at [{}:{}:{}] {}({})", template_call.path.borrow().to_string_lossy(),
+                    template_call.line, template_call.column, &template_call.name, args.join(", "));
+            }
+        }
+
         self.had_error = true;
     }
 }

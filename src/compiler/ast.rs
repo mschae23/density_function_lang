@@ -99,12 +99,16 @@ pub enum Expr {
     },
     FunctionCall {
         callee: Box<Expr>,
-        paren_left: Token,
+        token: Token,
         args: Vec<Expr>,
     },
     Member {
         receiver: Box<Expr>,
         name: Token,
+    },
+    BuiltinFunctionCall {
+        name: Token,
+        args: Vec<Expr>,
     },
 
     Object(Vec<(Token, Expr)>),
@@ -128,6 +132,11 @@ impl Debug for Expr {
                     .collect::<Vec<String>>().join(", "))
             },
             Expr::Member { receiver, name } => write!(f, "({:?}.{})", receiver, name.source()),
+            Expr::BuiltinFunctionCall { name, args } => {
+                write!(f, "(builtin.{}({}))", name.source(), args.iter()
+                    .map(|expr| format!("{:?}", expr))
+                    .collect::<Vec<String>>().join(", "))
+            },
 
             // Copied from Debug for JsonElement
             Expr::Object(fields) => write!(f, "{{{}}}", fields.iter()

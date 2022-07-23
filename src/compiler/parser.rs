@@ -313,7 +313,7 @@ impl<'source> Parser<'source> {
         }
 
         self.expect(TokenType::ParenthesisRight, "Expected ')' after function call arguments");
-        Expr::FunctionCall { callee: Box::new(callee), paren_left, args: arguments }
+        Expr::FunctionCall { callee: Box::new(callee), token: paren_left, args: arguments }
     }
 
     fn parse_primary(&mut self) -> Expr {
@@ -352,6 +352,8 @@ impl<'source> Parser<'source> {
             return self.parse_object_expression();
         } else if self.matches(TokenType::SquareBracketLeft) {
             return self.parse_array_expression();
+        } else if self.matches(TokenType::Builtin) {
+            return self.parse_builtin_call();
         }
 
         self.consume();
@@ -406,6 +408,31 @@ impl<'source> Parser<'source> {
 
         self.expect(TokenType::SquareBracketRight, "Expected ']' after array elements");
         Expr::Array(elements)
+    }
+
+    fn parse_builtin_call(&mut self) -> Expr {
+        self.expect(TokenType::Dot, "Expected '.' after 'builtin'");
+        self.expect(TokenType::Identifier, "Expected name after '.'");
+        let name = self.previous.clone();
+
+        self.expect(TokenType::ParenthesisLeft, "Expected '(' after built-in function name");
+
+        let mut arguments = vec![];
+
+        if !self.check(TokenType::ParenthesisRight) {
+            arguments.push(self.parse_expression());
+
+            while self.matches(TokenType::Comma) {
+                if arguments.len() >= 255 {
+                    self.error_at_current("Can't have more than 255 function call arguments", false);
+                }
+
+                arguments.push(self.parse_expression());
+            }
+        }
+
+        self.expect(TokenType::ParenthesisRight, "Expected ')' after built-in function call arguments");
+        Expr::BuiltinFunctionCall { name, args: arguments }
     }
 
     fn consume(&mut self) {

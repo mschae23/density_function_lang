@@ -24,7 +24,7 @@ pub struct Config {
     pub verbose: bool,
 }
 
-pub fn compile(path: PathBuf, target_dir: PathBuf) -> Result<Option<(Vec<Rc<RefCell<ExportFunction>>>, Compiler)>, std::io::Error> {
+pub fn compile(path: PathBuf, target_dir: PathBuf, verbose: bool) -> Result<Option<(Vec<Rc<RefCell<ExportFunction>>>, Compiler)>, std::io::Error> {
     let source = std::fs::read_to_string(path.to_owned())?;
 
     let lexer = Lexer::new(&source);
@@ -35,7 +35,7 @@ pub fn compile(path: PathBuf, target_dir: PathBuf) -> Result<Option<(Vec<Rc<RefC
         return Ok(None);
     }
 
-    let mut compiler = Compiler::new(path.to_owned(), target_dir.to_owned());
+    let mut compiler = Compiler::new(path.to_owned(), target_dir.to_owned(), verbose);
     let functions = compiler.compile(statements);
 
     if compiler.had_error() {
@@ -48,7 +48,7 @@ pub fn compile(path: PathBuf, target_dir: PathBuf) -> Result<Option<(Vec<Rc<RefC
 pub fn run() -> Result<(), std::io::Error> {
     let config: Config = Config::parse();
 
-    let (functions, _) = match compile(config.input.to_owned(), config.target_dir.to_owned())? {
+    let (functions, _) = match compile(config.input.to_owned(), config.target_dir.to_owned(), config.verbose)? {
         Some(result) => result,
         None => return Err(std::io::Error::from(std::io::ErrorKind::InvalidData)),
     };
