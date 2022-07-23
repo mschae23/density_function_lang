@@ -56,6 +56,7 @@ pub enum TokenType {
     Inline,
     Template, This,
     Export,
+    If, Else,
     Module, Include, Import,
     True, False,
 
@@ -207,8 +208,6 @@ impl<'source> Lexer<'source> {
                 ';' => Ok(self.make_token(TokenType::Semicolon)),
                 ':' => Ok(self.make_token(TokenType::Colon)),
 
-                // Comparison operators are unused by density functions
-                // Only `=` is used
                 '=' => Ok(if self.expect('=')? { self.make_token(TokenType::Equal) } else {
                     self.make_token(TokenType::Assign)
                 }),
@@ -325,11 +324,22 @@ impl<'source> Lexer<'source> {
 
         let token_type = match chars.next().expect("Internal compiler error: Empty identifier") {
             'b' => Lexer::check_keyword(name, 1, "builtin", TokenType::Builtin),
-            'e' => Lexer::check_keyword(name, 1, "export", TokenType::Export),
+            'e' => if let Some(c) = chars.next() {
+                match c {
+                    'l' => Lexer::check_keyword(name, 2, "else", TokenType::Else),
+                    'x' => Lexer::check_keyword(name, 2, "export", TokenType::Export),
+                    _ => TokenType::Identifier,
+                }
+            } else { TokenType::Identifier },
             'f' => Lexer::check_keyword(name, 1, "false", TokenType::False),
             'i' => {
                 if let Some(c) = chars.next() {
                     match c {
+                        'f' => if let Some(c) = chars.next() {
+                            match c {
+                                _ => TokenType::Identifier,
+                            }
+                        } else { TokenType::If },
                         'n' => {
                             if let Some(c) = chars.next() {
                                 match c {

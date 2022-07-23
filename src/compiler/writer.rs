@@ -28,6 +28,7 @@ impl JsonWriter {
             JsonElement::Array(elements) => self.write_array(elements, out),
 
             JsonElement::Module(_) | JsonElement::Template(_) => write!(out, "Error"),
+            JsonElement::Type(_) => write!(out, "Error"),
             JsonElement::Error => write!(out, "null"),
         }
     }

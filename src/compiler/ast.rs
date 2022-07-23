@@ -2,10 +2,11 @@ use std::cell::RefCell;
 use std::fmt::{Debug, Formatter};
 use std::path::PathBuf;
 use std::rc::{Rc, Weak};
+
 use crate::compiler::lexer::Token;
 
 #[derive(Clone, PartialEq)]
-pub enum Stmt {
+pub enum Decl {
     Template {
         name: Token,
         this: Option<Token>,
@@ -20,7 +21,7 @@ pub enum Stmt {
 
     Module {
         name: Token,
-        statements: Vec<Stmt>,
+        statements: Vec<Decl>,
     },
     Include {
         path: Token,
@@ -33,29 +34,29 @@ pub enum Stmt {
     Error,
 }
 
-impl Debug for Stmt {
+impl Debug for Decl {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Stmt::Template { name, this, args, expr } =>
+            Decl::Template { name, this, args, expr } =>
                 write!(f, "template {}({}{}) = {:?};", name.source(),
                     this.as_ref().map(|this| format!("{}, ", this.source())).unwrap_or_else(|| String::new()),
                     args.iter()
                         .map(|arg| arg.source().to_owned())
                         .collect::<Vec<String>>().join(", "), expr),
 
-            Stmt::Export { name, expr } =>
+            Decl::Export { name, expr } =>
                 write!(f, "export {} = {:?};", name.source(), expr),
 
-            Stmt::Module { name, statements } =>
+            Decl::Module { name, statements } =>
                 write!(f, "module {} {{ {} }}", name.source(), statements.iter().map(|stmt| format!("{:?}", stmt))
                     .collect::<Vec<String>>().join(" ")),
-            Stmt::Include { path } => write!(f, "include \"{}\";", path.source()),
-            Stmt::Import { path, selector } => write!(f, "{}.{}",
+            Decl::Include { path } => write!(f, "include \"{}\";", path.source()),
+            Decl::Import { path, selector } => write!(f, "{}.{}",
                 path.iter().map(|name| name.source().to_owned()).collect::<Vec<String>>().join("."),
                 selector.as_ref().map(|names| names.iter().map(|name| name.source().to_owned()).collect::<Vec<String>>().join(", "))
                     .map(|names| format!("{{{}}}", names)).unwrap_or_else(|| String::from("*"))),
 
-            Stmt::Error => write!(f, "Error;")
+            Decl::Error => write!(f, "Error;")
         }
     }
 }
@@ -65,6 +66,12 @@ pub enum TemplateExpr {
     Block {
         expressions: Vec<TemplateExpr>,
         last: Box<TemplateExpr>,
+    },
+    If {
+        token: Token,
+        condition: Expr,
+        then: Box<TemplateExpr>,
+        otherwise: Box<TemplateExpr>,
     },
     Simple(Expr),
 }
@@ -76,6 +83,8 @@ impl Debug for TemplateExpr {
                 write!(f, "{{ {}{:?} }}", expressions.iter()
                     .map(|expr| format!("{:?}; ", expr))
                     .collect::<Vec<String>>().join(""), *last),
+            TemplateExpr::If { condition, then, otherwise, .. } =>
+                write!(f, "if ({:?}) {:?} else {:?}", condition, *then, *otherwise),
             TemplateExpr::Simple(expr) => write!(f, "{:?}", expr),
         }
     }
@@ -111,6 +120,7 @@ pub enum Expr {
         name: Token,
         args: Vec<Expr>,
     },
+    BuiltinType(JsonElementType),
 
     Object(Vec<(Token, Expr)>),
     Array(Vec<Expr>),
@@ -139,6 +149,7 @@ impl Debug for Expr {
                     .map(|expr| format!("{:?}", expr))
                     .collect::<Vec<String>>().join(", "))
             },
+            Expr::BuiltinType(element_type) => write!(f, "builtin.type.{:?}", element_type),
 
             // Copied from Debug for JsonElement
             Expr::Object(fields) => write!(f, "{{{}}}", fields.iter()
@@ -153,7 +164,7 @@ impl Debug for Expr {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct ExportFunction {
     pub name: String,
     pub path: PathBuf,
@@ -162,7 +173,8 @@ pub struct ExportFunction {
 
 #[derive(Debug)]
 pub struct Template {
-    pub name: String, // Can be identifiers or operator names (like `+`)
+    pub name: String,
+    // Can be identifiers or operator names (like `+`)
     pub receiver: bool,
     pub args: Vec<String>,
     pub expr: TemplateExpr,
@@ -178,6 +190,35 @@ pub struct Module {
     pub exports: Vec<Rc<RefCell<ExportFunction>>>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum JsonElementType {
+    // @formatter:off
+    Float, Int, Boolean, String,
+    Object, Array,
+    Module, Template,
+    Type,
+    Error
+    // @formatter:on
+}
+
+impl Debug for JsonElementType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            JsonElementType::Float => write!(f, "float"),
+            JsonElementType::Int => write!(f, "int"),
+            JsonElementType::Boolean => write!(f, "boolean"),
+            JsonElementType::String => write!(f, "string"),
+            JsonElementType::Object => write!(f, "object"),
+            JsonElementType::Array => write!(f, "array"),
+            JsonElementType::Module => write!(f, "module"),
+            JsonElementType::Template => write!(f, "template"),
+            JsonElementType::Type => write!(f, "type"),
+            JsonElementType::Error => write!(f, "error"),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub enum JsonElement {
     ConstantFloat(f64),
@@ -191,7 +232,49 @@ pub enum JsonElement {
     Module(Rc<RefCell<Module>>),
     Template(Rc<RefCell<Template>>),
 
+    Type(JsonElementType),
+
     Error,
+}
+
+impl PartialEq for JsonElement {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            JsonElement::ConstantFloat(value) => match other {
+                JsonElement::ConstantFloat(other) => value.eq(other),
+                JsonElement::ConstantInt(other) => value.eq(&(*other as f64)),
+                _ => false,
+            },
+            JsonElement::ConstantInt(value) => match other {
+                JsonElement::ConstantFloat(other) => (&(*value as f64)).eq(other),
+                JsonElement::ConstantInt(other) => value.eq(other),
+                _ => false,
+            },
+            JsonElement::ConstantBoolean(value) => match other {
+                JsonElement::ConstantBoolean(other) => value.eq(other),
+                _ => false,
+            },
+            JsonElement::ConstantString(value) => match other {
+                JsonElement::ConstantString(other) => value.eq(other),
+                _ => false,
+            },
+            JsonElement::Object(fields) => match other {
+                JsonElement::Object(other) => fields.eq(other),
+                _ => false,
+            },
+            JsonElement::Array(elements) => match other {
+                JsonElement::Array(other) => elements.eq(other),
+                _ => false,
+            },
+            JsonElement::Module(_) => false,
+            JsonElement::Template(_) => false,
+            JsonElement::Type(value) => match other {
+                JsonElement::Type(other) => value.eq(other),
+                _ => false,
+            },
+            JsonElement::Error => false,
+        }
+    }
 }
 
 impl Debug for JsonElement {
@@ -210,7 +293,31 @@ impl Debug for JsonElement {
 
             JsonElement::Module(module) => write!(f, "<module {}>", &module.borrow().name),
             JsonElement::Template(template) => write!(f, "<template {}>", &template.borrow().name),
+            JsonElement::Type(element_type) => write!(f, "builtin.type.{:?}", element_type),
             JsonElement::Error => write!(f, "Error"),
         }
+    }
+}
+
+impl From<&JsonElement> for JsonElementType {
+    fn from(element: &JsonElement) -> Self {
+        match element {
+            JsonElement::ConstantFloat(_) => JsonElementType::Float,
+            JsonElement::ConstantInt(_) => JsonElementType::Int,
+            JsonElement::ConstantBoolean(_) => JsonElementType::Boolean,
+            JsonElement::ConstantString(_) => JsonElementType::String,
+            JsonElement::Object(_) => JsonElementType::Object,
+            JsonElement::Array(_) => JsonElementType::Array,
+            JsonElement::Module(_) => JsonElementType::Module,
+            JsonElement::Template(_) => JsonElementType::Template,
+            JsonElement::Type(_) => JsonElementType::Type,
+            JsonElement::Error => JsonElementType::Error,
+        }
+    }
+}
+
+impl From<JsonElement> for JsonElementType {
+    fn from(element: JsonElement) -> Self {
+        JsonElementType::from(&element)
     }
 }

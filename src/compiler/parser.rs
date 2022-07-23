@@ -3,7 +3,7 @@ use lazy_static::lazy_static;
 #[allow(unused)]
 use crate::debug;
 use crate::compiler::lexer::{Lexer, LexerError, Token, TokenPos, TokenType};
-use crate::compiler::ast::{Expr, Stmt, TemplateExpr};
+use crate::compiler::ast::{Expr, JsonElementType, Decl, TemplateExpr};
 
 lazy_static! {
     static ref ALLOWED_TEMPLATE_NAME_TYPES: [TokenType; 15] = [
@@ -41,9 +41,9 @@ impl<'source> Parser<'source> {
         self.had_error
     }
 
-    // Statement parsing
+    // Declaration parsing
 
-    pub fn parse(&mut self) -> Vec<Stmt> {
+    pub fn parse(&mut self) -> Vec<Decl> {
         self.consume();
 
         let mut statements = Vec::new();
@@ -55,17 +55,17 @@ impl<'source> Parser<'source> {
         statements
     }
 
-    fn parse_declaration(&mut self) -> Stmt {
+    fn parse_declaration(&mut self) -> Decl {
         if self.matches(TokenType::Export) {
-            return self.parse_export_statement();
+            return self.parse_export_declaration();
         } else if self.matches(TokenType::Template) {
-            return self.parse_template_statement();
+            return self.parse_template_declaration();
         } else if self.matches(TokenType::Module) {
-            return self.parse_module_statement();
+            return self.parse_module_declaration();
         } else if self.matches(TokenType::Include) {
-            return self.parse_include_statement();
+            return self.parse_include_declaration();
         } else if self.matches(TokenType::Import) {
-            return self.parse_import_statement();
+            return self.parse_import_declaration();
         }
 
         let stmt = self.parse_statement();
@@ -77,7 +77,7 @@ impl<'source> Parser<'source> {
         stmt
     }
 
-    fn parse_export_statement(&mut self) -> Stmt {
+    fn parse_export_declaration(&mut self) -> Decl {
         self.expect(TokenType::Identifier, "Expected name after 'export'");
         let name = self.previous.clone();
 
@@ -86,10 +86,10 @@ impl<'source> Parser<'source> {
         let expr = self.parse_expression();
         self.expect_statement_end();
 
-        Stmt::Export { name, expr }
+        Decl::Export { name, expr }
     }
 
-    fn parse_template_statement(&mut self) -> Stmt {
+    fn parse_template_declaration(&mut self) -> Decl {
         self.expect_any(&*ALLOWED_TEMPLATE_NAME_TYPES, "Expected name after 'template'");
         let name = self.previous.clone();
 
@@ -126,10 +126,10 @@ impl<'source> Parser<'source> {
         self.expect(TokenType::BracketLeft, "Expected '{' after ')'");
 
         let expr = self.parse_block_template_expression();
-        Stmt::Template { name, this, args: arguments, expr }
+        Decl::Template { name, this, args: arguments, expr }
     }
 
-    fn parse_module_statement(&mut self) -> Stmt {
+    fn parse_module_declaration(&mut self) -> Decl {
         self.expect(TokenType::Identifier, "Expected name after 'module'");
         let name = self.previous.clone();
 
@@ -137,23 +137,23 @@ impl<'source> Parser<'source> {
 
         let mut statements = Vec::new();
 
-        while !self.check(TokenType::BracketRight) {
+        while !self.check(TokenType::BracketRight) && !self.check(TokenType::Eof) {
             statements.push(self.parse_declaration());
         }
 
         self.expect(TokenType::BracketRight, "Expected '}' after statements in module");
-        Stmt::Module { name, statements }
+        Decl::Module { name, statements }
     }
 
-    fn parse_include_statement(&mut self) -> Stmt {
+    fn parse_include_declaration(&mut self) -> Decl {
         self.expect(TokenType::String, "Expected string after 'include'");
         let name = self.previous.clone();
         self.expect_statement_end();
 
-        Stmt::Include { path: name }
+        Decl::Include { path: name }
     }
 
-    fn parse_import_statement(&mut self) -> Stmt {
+    fn parse_import_declaration(&mut self) -> Decl {
         let mut path = vec![];
         let mut selector = None;
 
@@ -204,18 +204,22 @@ impl<'source> Parser<'source> {
         }
 
         self.expect_statement_end();
-        Stmt::Import { path, selector }
+        Decl::Import { path, selector }
     }
 
-    fn parse_statement(&mut self) -> Stmt {
+    fn parse_statement(&mut self) -> Decl {
         self.consume();
         self.error("Expected statement", true);
-        Stmt::Error
+        Decl::Error
     }
 
     // Template expressions
 
     fn parse_template_expression(&mut self) -> TemplateExpr {
+        if self.matches(TokenType::If) {
+            return self.parse_if_template_expression();
+        }
+
         TemplateExpr::Simple(self.parse_expression())
     }
 
@@ -233,10 +237,89 @@ impl<'source> Parser<'source> {
         TemplateExpr::Block { expressions, last: Box::new(expr) }
     }
 
+    fn parse_if_template_expression(&mut self) -> TemplateExpr {
+        self.expect(TokenType::ParenthesisLeft, "Expected '(' after 'if'");
+        let token = self.previous.clone();
+
+        let condition = self.parse_expression();
+        self.expect(TokenType::ParenthesisRight, "Expected ')' after 'if' condition");
+
+        let then;
+
+        if self.matches(TokenType::BracketLeft) {
+            then = self.parse_block_template_expression();
+        } else {
+            then = self.parse_template_expression();
+        }
+
+        self.expect(TokenType::Else, "Expected 'else' after then clause of 'if' expression");
+        let otherwise;
+
+        if self.matches(TokenType::BracketLeft) {
+            otherwise = self.parse_block_template_expression();
+        } else {
+            otherwise = self.parse_template_expression();
+        }
+
+        TemplateExpr::If { token, condition, then: Box::new(then), otherwise: Box::new(otherwise) }
+    }
+
     // Expression parsing
 
     fn parse_expression(&mut self) -> Expr {
-        self.parse_term()
+        self.parse_or()
+    }
+
+    fn parse_or(&mut self) -> Expr {
+        let mut expr = self.parse_and();
+
+        while self.matches(TokenType::ShortcircuitOr) {
+            let operator = self.previous.clone();
+            let right = self.parse_and();
+
+            expr = Expr::BinaryOperator { left: Box::new(expr), operator, right: Box::new(right) };
+        }
+
+        expr
+    }
+
+    fn parse_and(&mut self) -> Expr {
+        let mut expr = self.parse_equality();
+
+        while self.matches(TokenType::ShortcircuitAnd) {
+            let operator = self.previous.clone();
+            let right = self.parse_equality();
+
+            expr = Expr::BinaryOperator { left: Box::new(expr), operator, right: Box::new(right) };
+        }
+
+        expr
+    }
+
+    fn parse_equality(&mut self) -> Expr {
+        let mut expr = self.parse_comparison();
+
+        while self.matches_any(&[TokenType::Equal, TokenType::NotEqual]) {
+            let operator = self.previous.clone();
+            let right = self.parse_comparison();
+
+            expr = Expr::BinaryOperator { left: Box::new(expr), operator, right: Box::new(right) };
+        }
+
+        expr
+    }
+
+    fn parse_comparison(&mut self) -> Expr {
+        let mut expr = self.parse_term();
+
+        while self.matches_any(&[TokenType::Less, TokenType::LessEqual, TokenType::Greater, TokenType::GreaterEqual]) {
+            let operator = self.previous.clone();
+            let right = self.parse_term();
+
+            expr = Expr::BinaryOperator { left: Box::new(expr), operator, right: Box::new(right) };
+        }
+
+        expr
     }
 
     fn parse_term(&mut self) -> Expr {
@@ -266,7 +349,7 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_unary(&mut self) -> Expr {
-        if self.matches(TokenType::Minus) {
+        if self.matches_any(&[TokenType::Minus, TokenType::Not]) {
             let operator = self.previous.clone();
             let right = self.parse_unary();
 
@@ -419,6 +502,10 @@ impl<'source> Parser<'source> {
         self.expect(TokenType::Identifier, "Expected name after '.'");
         let name = self.previous.clone();
 
+        if name.source() == "type" {
+            return self.parse_builtin_type();
+        }
+
         self.expect(TokenType::ParenthesisLeft, "Expected '(' after built-in function name");
 
         let mut arguments = vec![];
@@ -437,6 +524,28 @@ impl<'source> Parser<'source> {
 
         self.expect(TokenType::ParenthesisRight, "Expected ')' after built-in function call arguments");
         Expr::BuiltinFunctionCall { name, args: arguments }
+    }
+
+    fn parse_builtin_type(&mut self) -> Expr {
+        self.expect(TokenType::Dot, "Expected '.' after 'type'");
+        self.expect(TokenType::Identifier, "Expected name after '.'");
+        let name = self.previous.clone();
+
+        match name.source() {
+            "float" => Expr::BuiltinType(JsonElementType::Float),
+            "int" => Expr::BuiltinType(JsonElementType::Int),
+            "boolean" => Expr::BuiltinType(JsonElementType::Boolean),
+            "string" => Expr::BuiltinType(JsonElementType::String),
+            "object" => Expr::BuiltinType(JsonElementType::Object),
+            "array" => Expr::BuiltinType(JsonElementType::Array),
+            "module" => Expr::BuiltinType(JsonElementType::Module),
+            "template" => Expr::BuiltinType(JsonElementType::Template),
+            "type" => Expr::BuiltinType(JsonElementType::Type),
+            _ => {
+                self.error("Unknown type", true);
+                Expr::Error
+            },
+        }
     }
 
     fn consume(&mut self) {

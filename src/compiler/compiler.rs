@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
-use crate::compiler::ast::{Expr, JsonElement, Module, ExportFunction, Stmt, Template, TemplateExpr};
+use crate::compiler::ast::{Expr, JsonElement, Module, ExportFunction, Decl, Template, TemplateExpr, JsonElementType};
 use crate::compiler::lexer::{Token, TokenPos};
 
 struct TemplateScope {
@@ -46,7 +46,7 @@ impl Compiler {
         }
     }
 
-    pub fn compile(&mut self, statements: Vec<Stmt>) -> Vec<Rc<RefCell<ExportFunction>>> {
+    pub fn compile(&mut self, statements: Vec<Decl>) -> Vec<Rc<RefCell<ExportFunction>>> {
         for stmt in statements {
             self.compile_statement(stmt);
         }
@@ -66,14 +66,14 @@ impl Compiler {
         }
     }
 
-    fn compile_statement(&mut self, stmt: Stmt) {
+    fn compile_statement(&mut self, stmt: Decl) {
         match stmt {
-            Stmt::Template { name, this, args, expr } => self.compile_template(name, this, args, expr),
-            Stmt::Export { name, expr } => self.compile_export(name, expr),
-            Stmt::Module { name, statements } => self.compile_module(name, statements),
-            Stmt::Include { path } => self.compile_include(path),
-            Stmt::Import { path, selector } => self.compile_import(path, selector),
-            Stmt::Error => {},
+            Decl::Template { name, this, args, expr } => self.compile_template(name, this, args, expr),
+            Decl::Export { name, expr } => self.compile_export(name, expr),
+            Decl::Module { name, statements } => self.compile_module(name, statements),
+            Decl::Include { path } => self.compile_include(path),
+            Decl::Import { path, selector } => self.compile_import(path, selector),
+            Decl::Error => {},
         }
     }
 
@@ -110,7 +110,7 @@ impl Compiler {
         }
 
         drop(current_module_borrow);
-        let expr = self.compile_expr(expr);
+        let expr = self.compile_expr(expr, false);
 
         let mut target_path = self.target_dir.to_owned();
 
@@ -129,7 +129,7 @@ impl Compiler {
         })));
     }
 
-    fn compile_module(&mut self, name: Token, statements: Vec<Stmt>) {
+    fn compile_module(&mut self, name: Token, statements: Vec<Decl>) {
         let current_module = self.current_module();
         let current_module_borrow = current_module.borrow();
 
@@ -272,7 +272,7 @@ impl Compiler {
         None
     }
 
-    fn compile_expr(&mut self, expr: Expr) -> JsonElement {
+    fn compile_expr(&mut self, expr: Expr, static_expr: bool) -> JsonElement {
         match expr {
             Expr::ConstantFloat(value) => JsonElement::ConstantFloat(value),
             Expr::ConstantInt(value) => JsonElement::ConstantInt(value),
@@ -287,51 +287,56 @@ impl Compiler {
             }
             // Expr::Group(expr) => self.compile_expr(*expr),
             Expr::UnaryOperator { operator, expr } => {
-                let compiled_expr = self.compile_expr(*expr);
+                let compiled_expr = self.compile_expr(*expr, static_expr);
 
                 let pos = *operator.start();
-                self.evaluate_template(Expr::Identifier(operator), pos, vec![compiled_expr])
+                self.evaluate_template(Expr::Identifier(operator), pos, vec![compiled_expr], static_expr)
             },
             Expr::BinaryOperator { left, operator, right } => {
-                let compiled_left = self.compile_expr(*left);
-                let compiled_right = self.compile_expr(*right);
+                let compiled_left = self.compile_expr(*left, static_expr);
+                let compiled_right = self.compile_expr(*right, static_expr);
 
                 let pos = *operator.start();
-                self.evaluate_template(Expr::Identifier(operator), pos, vec![compiled_left, compiled_right])
+                self.evaluate_template(Expr::Identifier(operator), pos, vec![compiled_left, compiled_right], static_expr)
             },
             Expr::FunctionCall { callee, token: paren_left, args } => {
-                let compiled_args = args.into_iter().map(|arg| self.compile_expr(arg)).collect();
+                let compiled_args = args.into_iter().map(|arg| self.compile_expr(arg, static_expr)).collect();
 
-                self.evaluate_template(*callee, *paren_left.start(), compiled_args)
+                self.evaluate_template(*callee, *paren_left.start(), compiled_args, static_expr)
             },
             Expr::Member { receiver, name } => {
-                let compiled_receiver = self.compile_expr(*receiver);
-                self.evaluate_member(compiled_receiver, name)
+                let compiled_receiver = self.compile_expr(*receiver, static_expr);
+                self.evaluate_member(compiled_receiver, name, static_expr)
             },
             Expr::BuiltinFunctionCall { name, args } => {
-                let compiled_args = args.into_iter().map(|arg| self.compile_expr(arg)).collect();
-
-                self.evaluate_builtin_call(name, compiled_args)
+                self.evaluate_builtin_call(name, args, static_expr)
             },
+            Expr::BuiltinType(element_type) => JsonElement::Type(element_type),
             Expr::Object(fields) => {
-                JsonElement::Object(fields.into_iter().map(|(name, field)| (name.source().to_owned(), self.compile_expr(field))).collect())
+                JsonElement::Object(fields.into_iter().map(|(name, field)| (name.source().to_owned(), self.compile_expr(field, static_expr))).collect())
             },
             Expr::Array(elements) => {
-                JsonElement::Array(elements.into_iter().map(|element| self.compile_expr(element)).collect())
+                JsonElement::Array(elements.into_iter().map(|element| self.compile_expr(element, static_expr)).collect())
             },
             Expr::Error => JsonElement::Error,
         }
     }
 
-    fn evaluate_template(&mut self, callee: Expr, token_pos: TokenPos, args: Vec<JsonElement>) -> JsonElement {
+    fn evaluate_template(&mut self, callee: Expr, token_pos: TokenPos, args: Vec<JsonElement>, static_expr: bool) -> JsonElement {
         let (receiver, name) = match callee {
-            Expr::Member { receiver, name} => (Some(self.compile_expr(*receiver)), name),
+            Expr::Member { receiver, name} => (Some(self.compile_expr(*receiver, static_expr)), name),
             Expr::Identifier(name) => (None, name),
             _ => {
                 self.error_at(token_pos, "Cannot call non-identifier expression", true);
                 return JsonElement::Error;
             },
         };
+
+        if static_expr {
+            if let Some(result) = self.evaluate_static_operator(&name, &args) {
+                return result;
+            }
+        }
 
         let template = match self.find_template(&name, receiver.as_ref(), args.len()) {
             Some(template) => template,
@@ -376,7 +381,7 @@ impl Compiler {
         std::mem::swap(&mut self.current_module, &mut template_current_modules);
         std::mem::swap(&mut self.path, &mut template_file_path);
 
-        let expr = self.compile_template_expr(template_expr.clone());
+        let expr = self.compile_template_expr(template_expr.clone(), static_expr);
         self.template_call_stack.pop();
         self.template_scopes.pop();
         std::mem::swap(&mut self.current_module, &mut template_current_modules);
@@ -385,16 +390,136 @@ impl Compiler {
         expr
     }
 
-    fn compile_template_expr(&mut self, expr: TemplateExpr) -> JsonElement {
+    fn evaluate_static_operator(&mut self, name: &Token, args: &Vec<JsonElement>) -> Option<JsonElement> {
+        macro_rules! make_expr {
+            ($x:expr) => { $x }
+        }
+
+        macro_rules! binary_number_op {
+            ($args:expr, $op:tt) => { match &$args[0] {
+                JsonElement::ConstantFloat(left) => match &$args[1] {
+                    JsonElement::ConstantFloat(right) => return Some(JsonElement::ConstantFloat(make_expr!(*left $op *right))),
+                    JsonElement::ConstantInt(right) => return Some(JsonElement::ConstantFloat(make_expr!(*left $op (*right as f64)))),
+                    element => self.error_at_static_operator_arg_type(name, element,
+                        &[JsonElementType::Float, JsonElementType::Int]),
+                },
+                JsonElement::ConstantInt(left) => match &$args[1] {
+                    JsonElement::ConstantFloat(right) => return Some(JsonElement::ConstantFloat(make_expr!((*left as f64) $op *right))),
+                    JsonElement::ConstantInt(right) => return Some(JsonElement::ConstantInt(make_expr!(*left $op *right))),
+                    element => self.error_at_static_operator_arg_type(name, element,
+                        &[JsonElementType::Float, JsonElementType::Int]),
+                },
+                element => self.error_at_static_operator_arg_type(name, element,
+                    &[JsonElementType::Float, JsonElementType::Int]),
+            } }
+        }
+
+        macro_rules! binary_compare_op {
+            ($args:expr, $op:tt) => { match &$args[0] {
+                JsonElement::ConstantFloat(left) => match &$args[1] {
+                    JsonElement::ConstantFloat(right) => return Some(JsonElement::ConstantBoolean(make_expr!(*left $op *right))),
+                    JsonElement::ConstantInt(right) => return Some(JsonElement::ConstantBoolean(make_expr!(*left $op (*right as f64)))),
+                    element => self.error_at_static_operator_arg_type(name, element,
+                        &[JsonElementType::Float, JsonElementType::Int]),
+                },
+                JsonElement::ConstantInt(left) => match &$args[1] {
+                    JsonElement::ConstantFloat(right) => return Some(JsonElement::ConstantBoolean(make_expr!((*left as f64) $op *right))),
+                    JsonElement::ConstantInt(right) => return Some(JsonElement::ConstantBoolean(make_expr!(*left $op *right))),
+                    element => self.error_at_static_operator_arg_type(name, element,
+                        &[JsonElementType::Float, JsonElementType::Int]),
+                },
+                element => self.error_at_static_operator_arg_type(name, element,
+                    &[JsonElementType::Float, JsonElementType::Int]),
+            } }
+        }
+
+        macro_rules! binary_logic_op {
+            ($args:expr, $op:tt) => { match &$args[0] {
+                JsonElement::ConstantBoolean(left) => match &$args[1] {
+                    JsonElement::ConstantBoolean(right) => return Some(JsonElement::ConstantBoolean(make_expr!(*left $op *right))),
+                    element => self.error_at_static_operator_arg_type(name, element,
+                        &[JsonElementType::Boolean]),
+                },
+                element => self.error_at_static_operator_arg_type(name, element,
+                    &[JsonElementType::Boolean]),
+            } }
+        }
+
+        if args.len() == 1 {
+            match name.source() {
+                "+" => match &args[0] {
+                    element @ JsonElement::ConstantFloat(_)
+                        | element @ JsonElement::ConstantInt(_) => return Some(element.clone()),
+                    element => self.error_at_static_operator_arg_type(name, element,
+                        &[JsonElementType::Float, JsonElementType::Int])
+                },
+                "-" => match &args[0] {
+                    JsonElement::ConstantFloat(value) => return Some(JsonElement::ConstantFloat(-(*value))),
+                    JsonElement::ConstantInt(value) => return Some(JsonElement::ConstantInt(-(*value))),
+                    element => self.error_at_static_operator_arg_type(name, element,
+                        &[JsonElementType::Float, JsonElementType::Int])
+                },
+                "!" => match &args[0] {
+                    JsonElement::ConstantBoolean(value) => return Some(JsonElement::ConstantBoolean(!(*value))),
+                    element => self.error_at_static_operator_arg_type(name, element,
+                        &[JsonElementType::Boolean])
+                },
+                _ => {},
+            }
+        } else if args.len() == 2 {
+            match name.source() {
+                "+" => binary_number_op!(args, +),
+                "-" => binary_number_op!(args, -),
+                "*" => binary_number_op!(args, *),
+                "/" => binary_number_op!(args, /),
+
+                "<" => binary_compare_op!(args, <),
+                "<=" => binary_compare_op!(args, <=),
+                ">" => binary_compare_op!(args, >),
+                ">=" => binary_compare_op!(args, >=),
+
+                "==" => return Some(JsonElement::ConstantBoolean(args[0] == args[1])),
+                "!=" => return Some(JsonElement::ConstantBoolean(args[0] != args[1])),
+
+                "&&" => binary_logic_op!(args, &&),
+                "||" => binary_logic_op!(args, ||),
+                _ => {},
+            }
+        }
+
+        None
+    }
+
+    fn error_at_static_operator_arg_type(&mut self, operator: &Token, element: &JsonElement, types: &[JsonElementType]) {
+        self.error_at_with_context(*operator.start(), "Argument to static operator has wrong type", vec![
+            ("Expected", JsonElement::Array(types.iter().map(|element_type| JsonElement::Type(*element_type)).collect())),
+            ("Actual", JsonElement::Type(JsonElementType::from(element)))
+        ], false);
+    }
+
+    fn compile_template_expr(&mut self, expr: TemplateExpr, static_expr: bool) -> JsonElement {
         match expr {
             TemplateExpr::Block { expressions, last } => {
                 for expr in expressions {
-                    self.compile_template_expr(expr);
+                    self.compile_template_expr(expr, static_expr);
                 }
 
-                self.compile_template_expr(*last)
+                self.compile_template_expr(*last, static_expr)
             },
-            TemplateExpr::Simple(expr) => self.compile_expr(expr),
+            TemplateExpr::If { token, condition, then, otherwise } => {
+                let compiled_condition = self.compile_expr(condition, true);
+
+                match compiled_condition {
+                    JsonElement::ConstantBoolean(value) =>
+                        self.compile_template_expr(if value { *then } else { *otherwise }, static_expr),
+                    element => {
+                        self.error_at_with_context(*token.end(), "Condition of 'if' expression must be a boolean value",
+                            vec![("Context", element)], true);
+                        JsonElement::Error
+                    },
+                }
+            },
+            TemplateExpr::Simple(expr) => self.compile_expr(expr, static_expr),
         }
     }
 
@@ -433,9 +558,18 @@ impl Compiler {
         None
     }
 
-    fn evaluate_builtin_call(&mut self, name: Token, args: Vec<JsonElement>) -> JsonElement {
+    fn evaluate_builtin_call(&mut self, name: Token, args: Vec<Expr>, static_expr: bool) -> JsonElement {
         if "error" == name.source() {
+            let args = args.into_iter().map(|arg| self.compile_expr(arg, static_expr)).collect();
             return self.evaluate_builtin_error_call(name, args);
+        } else if "static" == name.source() {
+            if args.len() != 1 {
+                self.error_at(*name.start(), "builtin.static() needs exactly one argument", true);
+                return JsonElement::Error;
+            }
+
+            return self.compile_expr(args.into_iter()
+                .next().expect("Internal compiler error: builtin.static() argument missing"), true);
         }
 
         self.error_at(*name.start(), &format!("Unknown built-in function: '{}'", name.source()), false);
@@ -448,8 +582,10 @@ impl Compiler {
         } else if args.len() > 0 {
             match &args[0] {
                 JsonElement::ConstantString(msg) =>
-                    self.error_at_with_context(*name.start(), &msg.to_owned(), args.into_iter().skip(1).collect(), false),
-                _ => self.error_at_with_context(*name.start(), "builtin.error() called", args, false),
+                    self.error_at_with_context(*name.start(), &msg.to_owned(), args.into_iter()
+                        .skip(1).map(|arg| ("Context", arg)).collect(), false),
+                _ => self.error_at_with_context(*name.start(), "builtin.error() called", args.into_iter()
+                    .map(|arg| ("Context", arg)).collect(), false),
             }
         }
 
@@ -483,7 +619,7 @@ impl Compiler {
         JsonElement::Error
     }
 
-    fn evaluate_member(&mut self, receiver: JsonElement, name: Token) -> JsonElement {
+    fn evaluate_member(&mut self, receiver: JsonElement, name: Token, static_expr: bool) -> JsonElement {
         match receiver {
             JsonElement::Module(module) => {
                 for template in &module.borrow().templates {
@@ -501,7 +637,11 @@ impl Compiler {
                 self.error_at(*name.start(), &format!("Unresolved reference: '{}'", name.source()), false);
                 JsonElement::Error
             },
-            _ => {
+            receiver => {
+                if static_expr && name.source() == "type" {
+                    return JsonElement::Type(JsonElementType::from(receiver));
+                }
+
                 self.error_at(*name.start(), "Tried to get a member of non-module value", true);
                 JsonElement::Error
             },
@@ -522,7 +662,7 @@ impl Compiler {
         self.error_at_with_context(pos, message, Vec::new(), panic)
     }
 
-    fn error_at_with_context(&mut self, pos: TokenPos, message: &str, context: Vec<JsonElement>, panic: bool) {
+    fn error_at_with_context(&mut self, pos: TokenPos, message: &str, context: Vec<(&str, JsonElement)>, panic: bool) {
         if self.panic_mode {
             return;
         } else if panic {
@@ -531,8 +671,8 @@ impl Compiler {
 
         eprintln!("[{}:{}:{}] Error: {}", self.path.borrow().to_string_lossy(), pos.line, pos.column, message);
 
-        for context_element in &context {
-            eprintln!("    Context: {:?}", context_element);
+        for (name, context_element) in &context {
+            eprintln!("    {}: {:?}", *name, context_element);
         }
 
         if self.verbose && !context.is_empty() && !self.template_call_stack.is_empty() {
