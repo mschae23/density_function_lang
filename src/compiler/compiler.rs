@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
-use crate::compiler::ast::{Expr, JsonElement, Module, OutputFunction, Stmt, Template};
+use crate::compiler::ast::{Expr, JsonElement, Module, ExportFunction, Stmt, Template, TemplateExpr};
 use crate::compiler::lexer::{Token, TokenPos};
 
 struct TemplateScope {
@@ -23,7 +23,7 @@ impl Compiler {
         Compiler {
             current_module: vec![],
             top_level_module: Rc::new(RefCell::new(Module { name: String::from("<top-level>"),
-                sub_modules: vec![], templates: vec![], output_functions: vec![] })),
+                sub_modules: vec![], templates: vec![], exports: vec![] })),
             template_scopes: vec![],
 
             path: Rc::new(RefCell::new(path)), target_dir,
@@ -32,30 +32,30 @@ impl Compiler {
         }
     }
 
-    pub fn compile(&mut self, statements: Vec<Stmt>) -> Vec<Rc<RefCell<OutputFunction>>> {
+    pub fn compile(&mut self, statements: Vec<Stmt>) -> Vec<Rc<RefCell<ExportFunction>>> {
         for stmt in statements {
             self.compile_statement(stmt);
         }
 
         let mut outputs = vec![];
-        Self::collect_output_functions(&mut outputs, Rc::clone(&self.top_level_module));
+        Self::collect_exports(&mut outputs, Rc::clone(&self.top_level_module));
         outputs
     }
 
-    fn collect_output_functions(outputs: &mut Vec<Rc<RefCell<OutputFunction>>>, module: Rc<RefCell<Module>>) {
-        outputs.append(&mut module.borrow_mut().output_functions);
+    fn collect_exports(outputs: &mut Vec<Rc<RefCell<ExportFunction>>>, module: Rc<RefCell<Module>>) {
+        outputs.append(&mut module.borrow_mut().exports);
 
         let module_borrow = module.borrow_mut();
 
         for sub_module in &module_borrow.sub_modules {
-            Self::collect_output_functions(outputs, Rc::clone(sub_module));
+            Self::collect_exports(outputs, Rc::clone(sub_module));
         }
     }
 
     fn compile_statement(&mut self, stmt: Stmt) {
         match stmt {
             Stmt::Template { name, this, args, expr } => self.compile_template(name, this, args, expr),
-            Stmt::Function { name, expr } => self.compile_function(name, expr),
+            Stmt::Export { name, expr } => self.compile_export(name, expr),
             Stmt::Module { name, statements } => self.compile_module(name, statements),
             Stmt::Include { path } => self.compile_include(path),
             Stmt::Import { path, selector } => self.compile_import(path, selector),
@@ -63,7 +63,7 @@ impl Compiler {
         }
     }
 
-    fn compile_template(&mut self, name: Token, this: Option<Token>, args: Vec<Token>, expr: Expr) {
+    fn compile_template(&mut self, name: Token, this: Option<Token>, args: Vec<Token>, expr: TemplateExpr) {
         let current_module = self.current_module();
         let mut current_module = current_module.borrow_mut();
 
@@ -86,12 +86,12 @@ impl Compiler {
         })))
     }
 
-    fn compile_function(&mut self, name: Token, expr: Expr) {
+    fn compile_export(&mut self, name: Token, expr: Expr) {
         let current_module = self.current_module();
         let current_module_borrow = current_module.borrow();
 
-        if current_module_borrow.output_functions.iter().any(|function| *function.borrow().name == *name.source()) {
-            self.error_at(*name.start(), "Tried to define multiple density functions with the same name", false);
+        if current_module_borrow.exports.iter().any(|function| *function.borrow().name == *name.source()) {
+            self.error_at(*name.start(), "Tried to define multiple exports with the same name", false);
             return;
         }
 
@@ -108,7 +108,7 @@ impl Compiler {
         target_path.set_extension("json");
 
         let mut current_module_mut = current_module.borrow_mut();
-        current_module_mut.output_functions.push(Rc::new(RefCell::new(OutputFunction {
+        current_module_mut.exports.push(Rc::new(RefCell::new(ExportFunction {
             name: name.source().to_owned(),
             path: target_path,
             json: expr,
@@ -126,7 +126,7 @@ impl Compiler {
 
         drop(current_module_borrow);
 
-        let module = Module { name: name.source().to_owned(), sub_modules: vec![], templates: vec![], output_functions: vec![] };
+        let module = Module { name: name.source().to_owned(), sub_modules: vec![], templates: vec![], exports: vec![] };
         self.current_module.push(Rc::new(RefCell::new(module)));
 
         for stmt in statements {
@@ -162,7 +162,7 @@ impl Compiler {
             let current_module = self.current_module();
             let mut current_module_borrow = current_module.borrow_mut();
 
-            current_module_borrow.output_functions.append(&mut functions);
+            current_module_borrow.exports.append(&mut functions);
             current_module_borrow.templates.append(&mut compiler.top_level_module.borrow_mut().templates);
             current_module_borrow.sub_modules.append(&mut compiler.top_level_module.borrow_mut().sub_modules);
         }
@@ -349,12 +349,25 @@ impl Compiler {
         std::mem::swap(&mut self.current_module, &mut template_current_modules);
         std::mem::swap(&mut self.path, &mut template_file_path);
 
-        let expr = self.compile_expr(template_expr.clone());
+        let expr = self.compile_template_expr(template_expr.clone());
         self.template_scopes.pop();
         std::mem::swap(&mut self.current_module, &mut template_current_modules);
         std::mem::swap(&mut self.path, &mut template_file_path);
 
         expr
+    }
+
+    fn compile_template_expr(&mut self, expr: TemplateExpr) -> JsonElement {
+        match expr {
+            TemplateExpr::Block { expressions, last } => {
+                for expr in expressions {
+                    self.compile_template_expr(expr);
+                }
+
+                self.compile_template_expr(*last)
+            },
+            TemplateExpr::Simple(expr) => self.compile_expr(expr),
+        }
     }
 
     fn find_template(&mut self, name: &Token, receiver: Option<&JsonElement>, arg_count: usize) -> Option<Rc<RefCell<Template>>> {

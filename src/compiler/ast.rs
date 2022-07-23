@@ -10,10 +10,10 @@ pub enum Stmt {
         name: Token,
         this: Option<Token>,
         args: Vec<Token>,
-        expr: Expr,
+        expr: TemplateExpr,
     },
 
-    Function {
+    Export {
         name: Token,
         expr: Expr,
     },
@@ -43,8 +43,8 @@ impl Debug for Stmt {
                         .map(|arg| arg.source().to_owned())
                         .collect::<Vec<String>>().join(", "), expr),
 
-            Stmt::Function { name, expr } =>
-                write!(f, "function {} = {:?};", name.source(), expr),
+            Stmt::Export { name, expr } =>
+                write!(f, "export {} = {:?};", name.source(), expr),
 
             Stmt::Module { name, statements } =>
                 write!(f, "module {} {{ {} }}", name.source(), statements.iter().map(|stmt| format!("{:?}", stmt))
@@ -56,6 +56,27 @@ impl Debug for Stmt {
                     .map(|names| format!("{{{}}}", names)).unwrap_or_else(|| String::from("*"))),
 
             Stmt::Error => write!(f, "Error;")
+        }
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub enum TemplateExpr {
+    Block {
+        expressions: Vec<TemplateExpr>,
+        last: Box<TemplateExpr>,
+    },
+    Simple(Expr),
+}
+
+impl Debug for TemplateExpr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TemplateExpr::Block { expressions, last } =>
+                write!(f, "{{ {}{:?} }}", expressions.iter()
+                    .map(|expr| format!("{:?}; ", expr))
+                    .collect::<Vec<String>>().join(""), *last),
+            TemplateExpr::Simple(expr) => write!(f, "{:?}", expr),
         }
     }
 }
@@ -122,7 +143,7 @@ impl Debug for Expr {
 }
 
 #[derive(Debug)]
-pub struct OutputFunction {
+pub struct ExportFunction {
     pub name: String,
     pub path: PathBuf,
     pub json: JsonElement,
@@ -133,7 +154,7 @@ pub struct Template {
     pub name: String, // Can be identifiers or operator names (like `+`)
     pub receiver: bool,
     pub args: Vec<String>,
-    pub expr: Expr,
+    pub expr: TemplateExpr,
     pub current_modules: Vec<Weak<RefCell<Module>>>,
     pub file_path: Rc<RefCell<PathBuf>>,
 }
@@ -143,7 +164,7 @@ pub struct Module {
     pub name: String,
     pub sub_modules: Vec<Rc<RefCell<Module>>>,
     pub templates: Vec<Rc<RefCell<Template>>>,
-    pub output_functions: Vec<Rc<RefCell<OutputFunction>>>,
+    pub exports: Vec<Rc<RefCell<ExportFunction>>>,
 }
 
 #[derive(Clone)]

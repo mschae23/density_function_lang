@@ -6,7 +6,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::rc::Rc;
 use clap::Parser as ClapParser;
-use crate::compiler::ast::OutputFunction;
+use crate::compiler::ast::ExportFunction;
 use crate::compiler::compiler::Compiler;
 use crate::compiler::lexer::Lexer;
 use crate::compiler::parser::Parser;
@@ -24,7 +24,7 @@ pub struct Config {
     pub verbose: bool,
 }
 
-pub fn compile(path: PathBuf, target_dir: PathBuf) -> Result<Option<(Vec<Rc<RefCell<OutputFunction>>>, Compiler)>, std::io::Error> {
+pub fn compile(path: PathBuf, target_dir: PathBuf) -> Result<Option<(Vec<Rc<RefCell<ExportFunction>>>, Compiler)>, std::io::Error> {
     let source = std::fs::read_to_string(path.to_owned())?;
 
     let lexer = Lexer::new(&source);

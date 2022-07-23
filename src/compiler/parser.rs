@@ -3,7 +3,7 @@ use lazy_static::lazy_static;
 #[allow(unused)]
 use crate::debug;
 use crate::compiler::lexer::{Lexer, LexerError, Token, TokenPos, TokenType};
-use crate::compiler::ast::{Expr, Stmt};
+use crate::compiler::ast::{Expr, Stmt, TemplateExpr};
 
 lazy_static! {
     static ref ALLOWED_TEMPLATE_NAME_TYPES: [TokenType; 15] = [
@@ -56,8 +56,8 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_declaration(&mut self) -> Stmt {
-        if self.matches(TokenType::Function) {
-            return self.parse_function_statement();
+        if self.matches(TokenType::Export) {
+            return self.parse_export_statement();
         } else if self.matches(TokenType::Template) {
             return self.parse_template_statement();
         } else if self.matches(TokenType::Module) {
@@ -77,16 +77,16 @@ impl<'source> Parser<'source> {
         stmt
     }
 
-    fn parse_function_statement(&mut self) -> Stmt {
-        self.expect(TokenType::Identifier, "Expected name after 'function'");
+    fn parse_export_statement(&mut self) -> Stmt {
+        self.expect(TokenType::Identifier, "Expected name after 'export'");
         let name = self.previous.clone();
 
-        self.expect(TokenType::Assign, "Expected '=' after function name");
+        self.expect(TokenType::Assign, "Expected '=' after export name");
 
         let expr = self.parse_expression();
         self.expect_statement_end();
 
-        Stmt::Function { name, expr }
+        Stmt::Export { name, expr }
     }
 
     fn parse_template_statement(&mut self) -> Stmt {
@@ -125,7 +125,7 @@ impl<'source> Parser<'source> {
         self.expect(TokenType::ParenthesisRight, "Expected ')' after template parameters");
         self.expect(TokenType::Assign, "Expected '=' after ')'");
 
-        let expr = self.parse_expression();
+        let expr = self.parse_template_expression();
         self.expect_statement_end();
 
         Stmt::Template { name, this, args: arguments, expr }
@@ -211,8 +211,15 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_statement(&mut self) -> Stmt {
-        self.error_at_current("Expected statement", true);
+        self.consume();
+        self.error("Expected statement", true);
         Stmt::Error
+    }
+
+    // Template expressions
+
+    fn parse_template_expression(&mut self) -> TemplateExpr {
+        TemplateExpr::Simple(self.parse_expression())
     }
 
     // Expression parsing
@@ -474,7 +481,7 @@ impl<'source> Parser<'source> {
             }
 
             match self.current.token_type() {
-                TokenType::Function => return,
+                TokenType::Export => return,
                 _ => {},
             };
 

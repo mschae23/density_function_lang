@@ -1,31 +1,31 @@
 include "minecraft.densityfunction";
 import df.*;
 
-function shift_x = flat_cache(cache_2d(shift_a("minecraft:offset")));
-function shift_z = flat_cache(cache_2d(shift_b("minecraft:offset")));
-function y = y_clamped_gradient(-4064, 4062, -4064.0, 4062.0);
-function zero = 0.0;
+export shift_x = flat_cache(cache_2d(shift_a("minecraft:offset")));
+export shift_z = flat_cache(cache_2d(shift_b("minecraft:offset")));
+export y = y_clamped_gradient(-4064, 4062, -4064.0, 4062.0);
+export zero = 0.0;
 
 module overworld {
-    function base_3d_noise = old_blended_noise(0.25, 0.125, 80.0, 160.0, 8.0);
+    export base_3d_noise = old_blended_noise(0.25, 0.125, 80.0, 160.0, 8.0);
 
-    function continents = flat_cache(shifted_noise("minecraft:shift_x", 0.0, "minecraft:shift_z", 0.25, 0.0, "minecraft:continentalness"));
-    function depth = y_clamped_gradient(-64, 320, 1.5, -1.5) + "minecraft:overworld/offset";
-    function erosion = flat_cache(shifted_noise("minecraft:shift_x", 0.0, "minecraft:shift_z", 0.25, 0.0, "minecraft:erosion"));
+    export continents = flat_cache(shifted_noise("minecraft:shift_x", 0.0, "minecraft:shift_z", 0.25, 0.0, "minecraft:continentalness"));
+    export depth = y_clamped_gradient(-64, 320, 1.5, -1.5) + "minecraft:overworld/offset";
+    export erosion = flat_cache(shifted_noise("minecraft:shift_x", 0.0, "minecraft:shift_z", 0.25, 0.0, "minecraft:erosion"));
 
-    // function offset = flat_cache(cache_2d(...));
-    // function factor = flat_cache(cache_2d(...));
-    // function jaggedness = flat_cache(cache_2d(...));
+    // export offset = flat_cache(cache_2d(...));
+    // export factor = flat_cache(cache_2d(...));
+    // export jaggedness = flat_cache(cache_2d(...));
 
-    function ridges = flat_cache(shifted_noise("minecraft:shift_x", 0.0, "minecraft:shift_z", 0.25, 0.0, "minecraft:ridge"));
-    function ridges_folded = -3.0 * (-0.3333333333333333 + (-0.6666666666666666 + "minecraft:overworld/ridges".abs()).abs());
+    export ridges = flat_cache(shifted_noise("minecraft:shift_x", 0.0, "minecraft:shift_z", 0.25, 0.0, "minecraft:ridge"));
+    export ridges_folded = -3.0 * (-0.3333333333333333 + (-0.6666666666666666 + "minecraft:overworld/ridges".abs()).abs());
 
-    function sloped_cheese = 4.0 * quarter_negative(
+    export sloped_cheese = 4.0 * quarter_negative(
         ("minecraft:overworld/depth" + "minecraft:overworld/jaggedness" * half_negative(noise("minecraft:jagged", 1500.0, 0.0)))
         * "minecraft:overworld/factor") + "minecraft:overworld/base_3d_noise";
 
     module caves {
-        function entrances = cache_once(min(
+        export entrances = cache_once(min(
             (0.37 + noise("minecraft:cave_entrance", 0.75, 0.5)) + y_clamped_gradient(-10, -30, 0.3, 0.0),
             "minecraft:overworld/caves/spaghetti_roughness_function" +
                 clamp(
@@ -37,7 +37,7 @@ module overworld {
                 ), -1.0, 1.0)
         ));
 
-        function noodle = range_choice(
+        export noodle = range_choice(
             interpolated(range_choice("minecraft:y", -60.0, 321.0, noise("minecraft:noodle", 1.0, 1.0), -1.0)),
             -1000000.0, 0.0,
             64.0,
@@ -48,16 +48,16 @@ module overworld {
                 )
         );
 
-        function pillars = cache_once(
+        export pillars = cache_once(
             (2.0 * noise("minecraft:pillar", 25.0, 0.3) + (-1.0 + -1.0 * noise("minecraft:pillar_rareness", 1.0, 1.0)))
                 * cube(0.55 + 0.55 * noise("minecraft:pillar_thickness", 1.0, 1.0))
         );
 
-        function spaghetti_2d_thickness_modulator = cache_once(
+        export spaghetti_2d_thickness_modulator = cache_once(
             -0.95 + -0.35000000000000003 * noise("minecraft:spaghetti_2d_thickness", 2.0, 1.0)
         );
 
-        function spaghetti_2d = clamp(
+        export spaghetti_2d = clamp(
             max(
                 weird_scaled_sampler(noise("minecraft:spaghetti_2d_modulator", 2.0, 1.0), "minecraft:spaghetti_2d", "type_2")
                     + 0.083 * "minecraft:overworld/caves/spaghetti_2d_thickness_modulator",
@@ -67,7 +67,7 @@ module overworld {
             -1.0, 1.0
         );
 
-        function spaghetti_roughness_function = cache_once(
+        export spaghetti_roughness_export = cache_once(
             (-0.05 + -0.05 * noise("minecraft:spaghetti_roughness_modulator", 1.0, 1.0)) *
                 (-0.4 + abs(noise("minecraft:spaghetti_roughness", 1.0, 1.0)))
         );
