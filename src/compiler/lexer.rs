@@ -57,6 +57,7 @@ pub enum TokenType {
     Template, This,
     Export,
     Module, Include, Import,
+    True, False,
 
     // EOF
     Eof,
@@ -325,6 +326,7 @@ impl<'source> Lexer<'source> {
         let token_type = match chars.next().expect("Internal compiler error: Empty identifier") {
             'b' => Lexer::check_keyword(name, 1, "builtin", TokenType::Builtin),
             'e' => Lexer::check_keyword(name, 1, "export", TokenType::Export),
+            'f' => Lexer::check_keyword(name, 1, "false", TokenType::False),
             'i' => {
                 if let Some(c) = chars.next() {
                     match c {
@@ -348,6 +350,7 @@ impl<'source> Lexer<'source> {
                     match c {
                         'e' => Lexer::check_keyword(name, 2, "template", TokenType::Template),
                         'h' => Lexer::check_keyword(name, 2, "this", TokenType::This),
+                        'r' => Lexer::check_keyword(name, 2, "true", TokenType::True),
                         _ => TokenType::Identifier,
                     }
                 } else { TokenType::Identifier }

@@ -276,6 +276,7 @@ impl Compiler {
         match expr {
             Expr::ConstantFloat(value) => JsonElement::ConstantFloat(value),
             Expr::ConstantInt(value) => JsonElement::ConstantInt(value),
+            Expr::ConstantBoolean(value) => JsonElement::ConstantBoolean(value),
             Expr::ConstantString(value) => JsonElement::ConstantString(value),
             Expr::Identifier(name) => {
                 if let Some((_, element)) = self.template_scopes.last().map(|scope| scope.args.iter().rfind(|(arg, _)| *arg == *name.source())).flatten() {

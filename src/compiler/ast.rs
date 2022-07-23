@@ -85,6 +85,7 @@ impl Debug for TemplateExpr {
 pub enum Expr {
     ConstantFloat(f64),
     ConstantInt(i32),
+    ConstantBoolean(bool),
     ConstantString(String),
     Identifier(Token),
 
@@ -122,6 +123,7 @@ impl Debug for Expr {
         match self {
             Expr::ConstantFloat(value) => write!(f, "{}", value),
             Expr::ConstantInt(value) => write!(f, "{}", value),
+            Expr::ConstantBoolean(value) => write!(f, "{}", value),
             Expr::ConstantString(value) => write!(f, "\"{}\"", value),
             Expr::Identifier(value) => write!(f, "{}", value.source()),
             Expr::UnaryOperator { operator, expr } => write!(f, "({}{:?})", operator.source(), expr),
@@ -180,6 +182,7 @@ pub struct Module {
 pub enum JsonElement {
     ConstantFloat(f64),
     ConstantInt(i32),
+    ConstantBoolean(bool),
     ConstantString(String),
 
     Object(Vec<(String, JsonElement)>),
@@ -196,6 +199,7 @@ impl Debug for JsonElement {
         match self {
             JsonElement::ConstantFloat(value) => write!(f, "{}", value),
             JsonElement::ConstantInt(value) => write!(f, "{}", value),
+            JsonElement::ConstantBoolean(value) => write!(f, "{}", value),
             JsonElement::ConstantString(value) => write!(f, "\"{}\"", value),
             JsonElement::Object(fields) => write!(f, "{{{}}}", fields.iter()
                 .map(|(key, field)| format!("{}: {:?}", key, field)).collect::<Vec<String>>()

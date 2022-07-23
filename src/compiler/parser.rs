@@ -339,6 +339,10 @@ impl<'source> Parser<'source> {
                     Expr::Error
                 },
             }
+        } else if self.matches(TokenType::True) {
+            return Expr::ConstantBoolean(true)
+        } else if self.matches(TokenType::False) {
+            return Expr::ConstantBoolean(false)
         } else if self.matches(TokenType::Identifier) || self.matches(TokenType::This) {
             return Expr::Identifier(self.previous.clone())
         } else if self.matches(TokenType::String) {
