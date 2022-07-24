@@ -21,6 +21,35 @@ module overworld {
         ("minecraft:overworld/depth" + "minecraft:overworld/jaggedness" * half_negative(noise("minecraft:jagged", 1500.0, 0.0)))
         * "minecraft:overworld/factor") + "minecraft:overworld/base_3d_noise";
 
+    template caves_function() {
+        max(
+            min(min(
+                4.0 * noise("minecraft:cave_layer", 1.0, 8.0) + clamp(0.27 + noise("minecraft:cave_cheese", 1.0, 0.6666666666666666), -1.0, 1.0)
+                    + clamp(1.5 + -0.64 * "minecraft:overworld/sloped_cheese", 0.0, 0.5),
+                "minecraft:overworld/caves/entrances"
+            ), "minecraft:overworld/caves/spaghetti_2d" + "minecraft:overworld/caves/spaghetti_roughness_function"),
+            range_choice("minecraft:overworld/caves/pillars", -1000000.0, 0.03, -1000000.0, "minecraft:overworld/caves/pillars")
+        )
+    }
+
+    template apply_surface_slides(input) {
+        apply_slides(input, -64, 384, 80, 64, -0.078125, 0, 24, 0.1171875)
+    }
+
+    template initial_density(factor, depth) {
+        4.0 * (depth * factor).quarter_negative()
+    }
+
+    export initial_density_without_jaggedness = apply_surface_slides(
+        clamp(-0.703125 + initial_density(cache_2d("minecraft:overworld/factor"), "minecraft:overworld/depth"), -64.0, 64.0)
+    );
+
+    export final_density = min(apply_blend_density(apply_surface_slides(
+        range_choice("minecraft:overworld/sloped_cheese", -1000000.0, 1.5625, min(
+            "minecraft:overworld/sloped_cheese", 5.0 * "minecraft:overworld/caves/entrances"
+        ), caves_function())
+    )), "minecraft:overworld/caves/noodle");
+
     module caves {
         export entrances = cache_once(min(
             (0.37 + noise("minecraft:cave_entrance", 0.75, 0.5)) + y_clamped_gradient(-10, -30, 0.3, 0.0),
@@ -64,7 +93,7 @@ module overworld {
             -1.0, 1.0
         );
 
-        export spaghetti_roughness_export = cache_once(
+        export spaghetti_roughness_function = cache_once(
             (-0.05 + -0.05 * noise("minecraft:spaghetti_roughness_modulator", 1.0, 1.0)) *
                 (-0.4 + abs(noise("minecraft:spaghetti_roughness", 1.0, 1.0)))
         );

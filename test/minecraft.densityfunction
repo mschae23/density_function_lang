@@ -204,9 +204,13 @@ module df {
         flat_cache(cache_2d(lerp(blend_alpha(), blend_offset, input)))
     }
 
+    template apply_blend_density(input) {
+        (0.64 * blend_density(input).interpolated()).squeeze()
+    }
+
     template apply_slides(input, min_y, max_y,
         top_relative_min_y, top_relative_max_y, top_density,
-        bottom_relative_min_y, bottom_relative_top_y, bottom_density) {
+        bottom_relative_min_y, bottom_relative_max_y, bottom_density) {
         lerp(
             y_clamped_gradient(builtin.static(min_y + bottom_relative_min_y), builtin.static(min_y + bottom_relative_max_y), 0.0, 1.0),
             bottom_density,
