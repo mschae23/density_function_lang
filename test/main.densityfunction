@@ -13,9 +13,6 @@ module overworld {
     export depth = y_clamped_gradient(-64, 320, 1.5, -1.5) + "minecraft:overworld/offset";
     export erosion = flat_cache(shifted_noise("minecraft:shift_x", 0.0, "minecraft:shift_z", 0.25, 0.0, "minecraft:erosion"));
 
-    // export offset = flat_cache(cache_2d(...));
-    // export factor = flat_cache(cache_2d(...));
-    // export jaggedness = flat_cache(cache_2d(...));
 
     export ridges = flat_cache(shifted_noise("minecraft:shift_x", 0.0, "minecraft:shift_z", 0.25, 0.0, "minecraft:ridge"));
     export ridges_folded = -3.0 * (-0.3333333333333333 + (-0.6666666666666666 + "minecraft:overworld/ridges".abs()).abs());
@@ -73,3 +70,5 @@ module overworld {
         );
     }
 }
+
+include "offset_factor_jaggedness.densityfunction";

@@ -96,7 +96,7 @@ module df {
         { "type": "minecraft:clamp", "input": arg, "min": min, "max": max }
     }
 
-    template constant(value) { validate.number(value); simple_0("minecraft:constant", value) }
+    template constant(value) { validate.number(value); simple_1("minecraft:constant", value) }
 
     template end_islands() { simple_0("minecraft:end_islands") }
 
@@ -153,7 +153,21 @@ module df {
         }
     }
 
-    // TODO template spline(...) { ... }
+    template df_spline(spline) {
+        { "type": "minecraft:spline", "spline": spline }
+    }
+
+    template spline(coordinate, points) {
+        { "coordinate": coordinate, "points": points }
+    }
+
+    template spline_point(location, value, derivative) {
+        { "derivative": derivative, "location": location, "value": value }
+    }
+
+    template spline_point(location, value) {
+        spline_point(location, value, 0.0)
+    }
 
     // Member templates
     template add(this, other) { add(this, other) }
@@ -174,4 +188,39 @@ module df {
     // + and * operators
     template +(left, right) { add(left, right) }
     template *(left, right) { mul(left, right) }
+
+    // Other templates
+
+    template lerp(delta, start, end) {
+        if (start.type == builtin.type.int || start.type == builtin.type.float) {
+            impl.lerp_const(delta, start, end)
+        } else {
+            start * (cache_once(delta) * -1.0 + 1.0)
+                + end * cache_once(delta)
+        }
+    }
+
+    template apply_blending(input, blend_offset) {
+        flat_cache(cache_2d(lerp(blend_alpha(), blend_offset, input)))
+    }
+
+    template apply_slides(input, min_y, max_y,
+        top_relative_min_y, top_relative_max_y, top_density,
+        bottom_relative_min_y, bottom_relative_top_y, bottom_density) {
+        lerp(
+            y_clamped_gradient(builtin.static(min_y + bottom_relative_min_y), builtin.static(min_y + bottom_relative_max_y), 0.0, 1.0),
+            bottom_density,
+            lerp(
+                y_clamped_gradient(builtin.static(min_y + max_y - top_relative_min_y), builtin.static(min_y + max_y - top_relative_max_y), 1.0, 0.0),
+                top_density,
+                input
+            )
+        )
+    }
+
+    module impl {
+        template lerp_const(delta, start, end) { // Requires start to be a constant number
+            start + delta * (builtin.static(-start) + end)
+        }
+    }
 }

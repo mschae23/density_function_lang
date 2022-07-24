@@ -304,6 +304,16 @@ impl<'source> Lexer<'source> {
                 while let Ok('0'..='9') = self.peek() {
                     let _ = self.consume();
                 }
+
+                if let Ok('e' | 'E') = self.peek() {
+                    let _ = self.consume();
+
+                    self.expect_any(&['+', '-'])?;
+
+                    while let Ok('0'..='9') = self.peek() {
+                        let _ = self.consume();
+                    }
+                }
             }
         }
 
@@ -447,6 +457,16 @@ impl<'source> Lexer<'source> {
         let actual = self.peek()?;
 
         if expected == actual {
+            self.consume().map(|_| true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    fn expect_any(&mut self, expected: &[char]) -> LexerResult<bool> {
+        let actual = self.peek()?;
+
+        if expected.contains(&actual) {
             self.consume().map(|_| true)
         } else {
             Ok(false)
