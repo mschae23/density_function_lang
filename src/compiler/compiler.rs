@@ -25,6 +25,9 @@ pub struct Compiler {
     template_scopes: Vec<TemplateScope>,
     template_call_stack: Vec<TemplateCall>,
 
+    outer_top_level_module: Option<Rc<RefCell<Module>>>,
+    outer_current_module: Option<Vec<Rc<RefCell<Module>>>>,
+
     path: Rc<RefCell<PathBuf>>, target_dir: PathBuf,
 
     had_error: bool, panic_mode: bool,
@@ -36,9 +39,13 @@ impl Compiler {
         Compiler {
             current_module: vec![],
             top_level_module: Rc::new(RefCell::new(Module { name: String::from("<top-level>"),
-                sub_modules: vec![], templates: vec![], exports: vec![] })),
+                sub_modules: vec![], templates: vec![], exports: vec![],
+                imported_sub_modules: vec![], imported_templates: vec![], imported_exports: vec![]})),
             template_scopes: vec![],
             template_call_stack: vec![],
+
+            outer_top_level_module: None,
+            outer_current_module: None,
 
             path: Rc::new(RefCell::new(path)), target_dir,
 
@@ -98,8 +105,12 @@ impl Compiler {
     fn compile_template(&mut self, name: Token, this: Option<Token>, args: Vec<Token>, expr: TemplateExpr) {
         let current_module = self.current_module();
         let mut current_module = current_module.borrow_mut();
+        let outer_current_module = self.outer_current_module();
+        let outer_current_module = outer_current_module.as_ref().map(|module| module.borrow());
 
-        if current_module.templates.iter().any(|template|
+        if current_module.templates.iter()
+            .chain(outer_current_module.iter().flat_map(|module| module.templates.iter()))
+            .any(|template|
             *template.borrow().name == *name.source() && template.borrow().args.len() == args.len() && template.borrow().receiver == this.is_some()) {
             self.error_at(*name.start(), "Tried to define multiple templates with the same name", false);
             return;
@@ -121,12 +132,17 @@ impl Compiler {
     fn compile_export(&mut self, name: Token, expr: Expr) {
         let current_module = self.current_module();
         let current_module_borrow = current_module.borrow();
+        let outer_current_module = self.outer_current_module();
+        let outer_current_module_borrow = outer_current_module.as_ref().map(|module| module.borrow());
 
-        if current_module_borrow.exports.iter().any(|function| *function.borrow().name == *name.source()) {
+        if current_module_borrow.exports.iter()
+            .chain(outer_current_module_borrow.iter().flat_map(|module| module.exports.iter()))
+            .any(|function| *function.borrow().name == *name.source()) {
             self.error_at(*name.start(), "Tried to define multiple exports with the same name", false);
             return;
         }
 
+        drop(outer_current_module_borrow);
         drop(current_module_borrow);
         let expr = self.compile_expr(expr, false);
 
@@ -140,18 +156,24 @@ impl Compiler {
     fn compile_module(&mut self, name: Token, statements: Vec<Decl>) {
         let current_module = self.current_module();
         let current_module_borrow = current_module.borrow();
+        let outer_current_module = self.outer_current_module();
+        let outer_current_module_borrow = outer_current_module.as_ref().map(|module| module.borrow());
 
         let module;
         let extending;
 
-        if let Some(existing) = current_module_borrow.sub_modules.iter().find(|module| *module.borrow().name == *name.source()) {
+        if let Some(existing) = current_module_borrow.sub_modules.iter()
+            .chain(outer_current_module_borrow.iter().flat_map(|module| module.sub_modules.iter()))
+            .find(|module| *module.borrow().name == *name.source()) {
             module = Rc::clone(existing);
             drop(current_module_borrow);
 
             extending = true;
         } else {
             drop(current_module_borrow);
-            module = Rc::new(RefCell::new(Module { name: name.source().to_owned(), sub_modules: vec![], templates: vec![], exports: vec![] }));
+            module = Rc::new(RefCell::new(Module { name: name.source().to_owned(),
+                sub_modules: vec![], templates: vec![], exports: vec![],
+                imported_sub_modules: vec![], imported_templates: vec![], imported_exports: vec![] }));
 
             extending = false;
         }
@@ -163,6 +185,11 @@ impl Compiler {
         }
 
         let module = self.current_module.pop().expect("Internal compiler error: Missing module");
+        let mut module_borrow = module.borrow_mut();
+        module_borrow.imported_sub_modules.clear();
+        module_borrow.imported_templates.clear();
+        module_borrow.imported_exports.clear();
+        drop(module_borrow);
 
         if !extending {
             self.current_module().borrow_mut().sub_modules.push(module);
@@ -192,6 +219,8 @@ impl Compiler {
             };
 
             let mut compiler = Compiler::new(path, self.target_dir.to_owned(), self.verbose);
+            compiler.outer_top_level_module = Some(Rc::clone(&self.top_level_module));
+            compiler.outer_current_module = Some(self.current_module.iter().map(|module| Rc::clone(module)).collect());
             compiler.compile(declarations);
 
             if compiler.had_error() {
@@ -202,9 +231,9 @@ impl Compiler {
             let current_module = self.current_module();
             let mut current_module_borrow = current_module.borrow_mut();
 
-            current_module_borrow.exports.append(&mut compiler.top_level_module.borrow_mut().exports);
-            current_module_borrow.templates.append(&mut compiler.top_level_module.borrow_mut().templates);
-            current_module_borrow.sub_modules.append(&mut compiler.top_level_module.borrow_mut().sub_modules);
+            current_module_borrow.imported_sub_modules.append(&mut compiler.top_level_module.borrow_mut().sub_modules);
+            current_module_borrow.imported_templates.append(&mut compiler.top_level_module.borrow_mut().templates);
+            current_module_borrow.imported_exports.append(&mut compiler.top_level_module.borrow_mut().exports);
         }
     }
 
@@ -248,7 +277,7 @@ impl Compiler {
         let current_module = self.current_module();
         let mut current_module_borrow = current_module.borrow_mut();
 
-        for template in &module.borrow().templates {
+        for template in module.borrow().templates.iter().chain(module.borrow().imported_templates.iter()) {
             let template_name = &template.borrow().name;
             let template_arg_count = template.borrow().args.len();
             let mut allow = true;
@@ -264,11 +293,17 @@ impl Compiler {
                     return;
                 }
 
-                current_module_borrow.templates.push(Rc::clone(&template));
+                if current_module_borrow.imported_templates.iter().any(|template| *template.borrow().name == *template_name && template.borrow().args.len() == template_arg_count) {
+                    self.error_at(*path.last().expect("Internal compiler error: Empty import path").start(),
+                        &format!("Tried to import template with already existing name: '{}'", template_name), false);
+                    return;
+                }
+
+                current_module_borrow.imported_templates.push(Rc::clone(&template));
             }
         }
 
-        for sub_module in &module.borrow().sub_modules {
+        for sub_module in module.borrow().sub_modules.iter().chain(module.borrow().imported_sub_modules.iter()) {
             let sub_module_name = &sub_module.borrow().name;
             let mut allow = true;
 
@@ -283,13 +318,19 @@ impl Compiler {
                     return;
                 }
 
-                current_module_borrow.sub_modules.push(Rc::clone(&sub_module));
+                if current_module_borrow.imported_sub_modules.iter().any(|sub_module| *sub_module.borrow().name == *sub_module_name) {
+                    self.error_at(*path.last().expect("Internal compiler error: Empty import path").start(),
+                        &format!("Tried to import module with already existing name: '{}'", sub_module_name), false);
+                    return;
+                }
+
+                current_module_borrow.imported_sub_modules.push(Rc::clone(&sub_module));
             }
         }
     }
 
     fn find_submodule(module: &Rc<RefCell<Module>>, name: &Token) -> Option<Rc<RefCell<Module>>> {
-        for sub_module in &module.borrow().sub_modules {
+        for sub_module in module.borrow().sub_modules.iter().chain(module.borrow().imported_sub_modules.iter()) {
             if sub_module.borrow().name == *name.source() {
                 return Some(Rc::clone(sub_module));
             }
@@ -579,7 +620,17 @@ impl Compiler {
     }
 
     fn find_template_on(module: &Rc<RefCell<Module>>, name: &Token, receiver: bool, arg_count: usize) -> Option<Rc<RefCell<Template>>> {
-        for template in &module.borrow().templates {
+        if let Some(template) = Self::find_template_in(&module.borrow().templates, name, receiver, arg_count) {
+            return Some(template);
+        } else if let Some(template) = Self::find_template_in(&module.borrow().imported_templates, name, receiver, arg_count) {
+            return Some(template);
+        }
+
+        None
+    }
+
+    fn find_template_in(templates: &Vec<Rc<RefCell<Template>>>, name: &Token, receiver: bool, arg_count: usize) -> Option<Rc<RefCell<Template>>> {
+        for template in templates {
             if *template.borrow().name == *name.source() && template.borrow().args.len() == arg_count && (template.borrow().receiver == receiver) {
                 return Some(Rc::clone(template));
             }
@@ -636,7 +687,19 @@ impl Compiler {
                 }
             }
 
+            for template in &module.borrow().imported_templates {
+                if *template.borrow().name == *name.source() && !template.borrow().receiver {
+                    return JsonElement::Template(Rc::clone(template));
+                }
+            }
+
             for sub_module in &module.borrow().sub_modules {
+                if *sub_module.borrow().name == *name.source() {
+                    return JsonElement::Module(Rc::clone(sub_module));
+                }
+            }
+
+            for sub_module in &module.borrow().imported_sub_modules {
                 if *sub_module.borrow().name == *name.source() {
                     return JsonElement::Module(Rc::clone(sub_module));
                 }
@@ -658,7 +721,19 @@ impl Compiler {
                     }
                 }
 
+                for template in &module.borrow().imported_templates {
+                    if *template.borrow().name == *name.source() {
+                        return JsonElement::Template(Rc::clone(template));
+                    }
+                }
+
                 for sub_module in &module.borrow().sub_modules {
+                    if *sub_module.borrow().name == *name.source() {
+                        return JsonElement::Module(Rc::clone(sub_module));
+                    }
+                }
+
+                for sub_module in &module.borrow().imported_sub_modules {
                     if *sub_module.borrow().name == *name.source() {
                         return JsonElement::Module(Rc::clone(sub_module));
                     }
@@ -680,6 +755,11 @@ impl Compiler {
 
     fn current_module(&self) -> Rc<RefCell<Module>> {
         self.current_module.last().map(|module| Rc::clone(&module)).unwrap_or_else(|| Rc::clone(&self.top_level_module))
+    }
+
+    fn outer_current_module(&self) -> Option<Rc<RefCell<Module>>> {
+        self.outer_current_module.as_ref().and_then(|modules| modules.last().map(|module| Rc::clone(&module)))
+            .or_else(|| self.outer_top_level_module.as_ref().map(|module| Rc::clone(&module)))
     }
 
     // Error handling

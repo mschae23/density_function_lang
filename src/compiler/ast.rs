@@ -194,6 +194,10 @@ pub struct Module {
     pub sub_modules: Vec<Rc<RefCell<Module>>>,
     pub templates: Vec<Rc<RefCell<Template>>>,
     pub exports: Vec<Rc<RefCell<CompiledExport>>>,
+
+    pub imported_sub_modules: Vec<Rc<RefCell<Module>>>,
+    pub imported_templates: Vec<Rc<RefCell<Template>>>,
+    pub imported_exports: Vec<Rc<RefCell<CompiledExport>>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
