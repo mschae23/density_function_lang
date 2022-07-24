@@ -1,564 +1,562 @@
 include "minecraft.densityfunction";
 import df.*;
 
-module overworld {
-    export offset = apply_blending(-0.50375 + df_spline(
-        spline("minecraft:overworld/continents", [
-            spline_point(-1.1, 0.044),
-            spline_point(-1.02, -0.2222),
-            spline_point(-0.51, -0.2222),
-            spline_point(-0.44, -0.12),
-            spline_point(-0.18, -0.12),
-            spline_point(-0.16, spline("minecraft:overworld/erosion", [
-                spline_point(-0.85, spline("minecraft:overworld/ridges_folded", [
-                    spline_point(-1.0, -0.08880186, 0.38940096),
-                    spline_point(1.0, 0.69000006, 0.38940096),
-                ])),
-                spline_point(-0.7, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.115760356, 0.37788022),
-                      spline_point(1.0, 0.6400001, 0.37788022),
-                ])),
-                spline_point(-0.4, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.2222),
-                      spline_point(-0.75, -0.2222),
-                      spline_point(-0.65, 0.0),
-                      spline_point(0.5954547, 2.9802322E-8),
-                      spline_point(0.6054547, 2.9802322E-8, 0.2534563),
-                      spline_point(1.0, 0.100000024, 0.2534563),
-                ])),
-                spline_point(-0.35, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.3, 0.5),
-                      spline_point(-0.4, -0.05),
-                      spline_point(0.0, -0.05),
-                      spline_point(0.4, -0.05),
-                      spline_point(1.0, 0.060000002, 0.007000001),
-                ])),
-                spline_point(-0.1, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.15, 0.5),
-                      spline_point(-0.4, -0.05),
-                      spline_point(0.0, -0.05),
-                      spline_point(0.4, -0.05),
-                      spline_point(1.0, 0.060000002, 0.007000001),
-                ])),
-                spline_point(0.2, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.15, 0.5),
-                      spline_point(-0.4, -0.05),
-                      spline_point(0.0, -0.05),
-                      spline_point(0.4, -0.05),
-                      spline_point(1.0, 0.0),
-                ])),
-                spline_point(0.7, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.02),
-                      spline_point(-0.4, -0.03),
-                      spline_point(0.0, -0.03),
-                      spline_point(0.4, 0.0, 0.06),
-                      spline_point(1.0, 0.0),
-                ])),
+export offset = apply_blending(-0.50375 + df_spline(
+    spline("minecraft:overworld/continents", [
+        spline_point(-1.1, 0.044),
+        spline_point(-1.02, -0.2222),
+        spline_point(-0.51, -0.2222),
+        spline_point(-0.44, -0.12),
+        spline_point(-0.18, -0.12),
+        spline_point(-0.16, spline("minecraft:overworld/erosion", [
+            spline_point(-0.85, spline("minecraft:overworld/ridges_folded", [
+                spline_point(-1.0, -0.08880186, 0.38940096),
+                spline_point(1.0, 0.69000006, 0.38940096),
             ])),
-            spline_point(-0.15, spline("minecraft:overworld/erosion", [
-                spline_point(-0.85, spline("minecraft:overworld/ridges_folded", [
-                    spline_point(-1.0, -0.08880186, 0.38940096),
-                    spline_point(1.0, 0.69000006, 0.38940096),
-                ])),
-                spline_point(-0.7, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.115760356, 0.37788022),
-                      spline_point(1.0, 0.6400001, 0.37788022),
-                ])),
-                spline_point(-0.4, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.2222),
-                      spline_point(-0.75, -0.2222),
-                      spline_point(-0.65, 0.0),
-                      spline_point(0.5954547, 2.9802322E-8),
-                      spline_point(0.6054547, 2.9802322E-8, 0.2534563),
-                      spline_point(1.0, 0.100000024, 0.2534563),
-                ])),
-                spline_point(-0.35, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.3, 0.5),
-                      spline_point(-0.4, 0.05),
-                      spline_point(0.0, 0.05),
-                      spline_point(0.4, 0.05),
-                      spline_point(1.0, 0.060000002, 0.007000001),
-                ])),
-                spline_point(-0.1, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.15, 0.5),
-                      spline_point(-0.4, 0.0),
-                      spline_point(0.0, 0.0),
-                      spline_point(0.4, 0.05, 0.1),
-                      spline_point(1.0, 0.060000002, 0.007000001),
-                ])),
-                spline_point(0.2, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.15),
-                      spline_point(-0.4, 0),
-                      spline_point(0.0, 0),
-                      spline_point(0.4, 0.0),
-                      spline_point(1.0, 0.0),
-                ])),
-                spline_point(0.7, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.02),
-                      spline_point(-0.4, -0.03),
-                      spline_point(0.0, -0.03),
-                      spline_point(0.4, 0.0, 0.06),
-                      spline_point(1.0, 0.0),
-                ])),
+            spline_point(-0.7, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.115760356, 0.37788022),
+                  spline_point(1.0, 0.6400001, 0.37788022),
             ])),
-            spline_point(-0.1, spline("minecraft:overworld/erosion", [
-                spline_point(-0.85, spline("minecraft:overworld/ridges_folded", [
-                    spline_point(-1.0, -0.08880186, 0.38940096),
-                    spline_point(1.0, 0.69000006, 0.38940096),
-                ])),
-                spline_point(-0.7, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.115760356, 0.37788022),
-                      spline_point(1.0, 0.6400001, 0.37788022),
-                ])),
-                spline_point(-0.4, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.2222),
-                      spline_point(-0.75, -0.2222),
-                      spline_point(-0.65, 0.0),
-                      spline_point(0.5954547, 2.9802322E-8),
-                      spline_point(0.6054547, 2.9802322E-8, 0.2534563),
-                      spline_point(1.0, 0.100000024, 0.2534563),
-                ])),
-                spline_point(-0.35, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.25, 0.5),
-                      spline_point(-0.4, 0.05),
-                      spline_point(0.0, 0.05),
-                      spline_point(0.4, 0.05),
-                      spline_point(1.0, 0.060000002, 0.007000001),
-                ])),
-                spline_point(-0.1, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.1, 0.5),
-                      spline_point(-0.4, 0.001, 0.01),
-                      spline_point(0.0, 0.003, 0.01),
-                      spline_point(0.4, 0.05, 0.1),
-                      spline_point(1.0, 0.060000002, 0.007000001),
-                ])),
-                spline_point(0.2, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.1, 0.5),
-                      spline_point(-0.4, 0.01),
-                      spline_point(0.0, 0.01),
-                      spline_point(0.4, 0.03, 0.04),
-                      spline_point(1.0, 0.1, 0.049),
-                ])),
-                spline_point(0.7, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.02),
-                      spline_point(-0.4, -0.03),
-                      spline_point(0.0, -0.03),
-                      spline_point(0.4, 0.03, 0.12),
-                      spline_point(1.0, 0.1, 0.049),
-                ])),
+            spline_point(-0.4, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.2222),
+                  spline_point(-0.75, -0.2222),
+                  spline_point(-0.65, 0.0),
+                  spline_point(0.5954547, 2.9802322E-8),
+                  spline_point(0.6054547, 2.9802322E-8, 0.2534563),
+                  spline_point(1.0, 0.100000024, 0.2534563),
             ])),
-            spline_point(0.25, spline("minecraft:overworld/erosion", [
-                spline_point(-0.85, spline("minecraft:overworld/ridges_folded", [
-                    spline_point(-1.0, 0.20235021),
-                    spline_point(0.0, 0.7161751, 0.5138249),
-                    spline_point(1.0, 1.23, 0.5138249),
-                ])),
-                spline_point(-0.7, spline("minecraft:overworld/ridges_folded", [
-                    spline_point(-1.0, 0.2),
-                    spline_point(0.0, 0.44682026, 0.43317974),
-                    spline_point(1.0, 0.88, 0.43317974),
-                ])),
-                spline_point(-0.4, spline("minecraft:overworld/ridges_folded", [
-                    spline_point(-1.0, 0.2),
-                    spline_point(0.0, 0.30829495, 0.3917051),
-                    spline_point(1.0, 0.70000005, 0.3917051),
-                ])),
-                spline_point(-0.35, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.25, 0.5),
-                      spline_point(-0.4, 0.35),
-                      spline_point(0.0, 0.35),
-                      spline_point(0.4, 0.35),
-                      spline_point(1.0, 0.42000002, 0.049000014),
-                ])),
-                spline_point(-0.1, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.1, 0.5),
-                      spline_point(-0.4, 0.0069999998, 0.07),
-                      spline_point(0.0, 0.021, 0.07),
-                      spline_point(0.4, 0.35, 0.658),
-                      spline_point(1.0, 0.42000002, 0.049000014),
-                ])),
-                spline_point(0.2, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.1, 0.5),
-                      spline_point(-0.4, 0.01),
-                      spline_point(0.0, 0.01),
-                      spline_point(0.4, 0.03, 0.04),
-                      spline_point(1.0, 0.1, 0.049),
-                ])),
-                spline_point(0.4, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.1, 0.5),
-                      spline_point(-0.4, 0.01),
-                      spline_point(0.0, 0.01),
-                      spline_point(0.4, 0.03, 0.04),
-                      spline_point(1.0, 0.1, 0.049),
-                ])),
-                spline_point(0.45, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.1),
-                      spline_point(-0.4, spline("minecraft:overworld/ridges_folded", [
-                          spline_point(-1.0, -0.1, 0.5),
-                          spline_point(-0.4, 0.01),
-                          spline_point(0.0, 0.01),
-                          spline_point(0.4, 0.03, 0.04),
-                          spline_point(1.0, 0.1, 0.049),
-                      ])),
-                      spline_point(0.0, 0.17),
-                ])),
-                spline_point(0.55, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.1),
-                      spline_point(-0.4, spline("minecraft:overworld/ridges_folded", [
-                          spline_point(-1.0, -0.1, 0.5),
-                          spline_point(-0.4, 0.01),
-                          spline_point(0.0, 0.01),
-                          spline_point(0.4, 0.03, 0.04),
-                          spline_point(1.0, 0.1, 0.049),
-                      ])),
-                      spline_point(0.0, 0.17),
-                ])),
-                spline_point(0.58, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.1, 0.5),
-                      spline_point(-0.4, 0.01),
-                      spline_point(0.0, 0.01),
-                      spline_point(0.4, 0.03, 0.04),
-                      spline_point(1.0, 0.1, 0.049),
-                ])),
-                spline_point(0.7, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.02),
-                      spline_point(-0.4, -0.03),
-                      spline_point(0.0, -0.03),
-                      spline_point(0.4, 0.03, 0.12),
-                      spline_point(1.0, 0.1, 0.049),
-                ])),
+            spline_point(-0.35, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.3, 0.5),
+                  spline_point(-0.4, -0.05),
+                  spline_point(0.0, -0.05),
+                  spline_point(0.4, -0.05),
+                  spline_point(1.0, 0.060000002, 0.007000001),
             ])),
-            spline_point(1.0, spline("minecraft:overworld/erosion", [
-                spline_point(-0.85, spline("minecraft:overworld/ridges_folded", [
-                    spline_point(-1.0, 0.34792626),
-                    spline_point(0.0, 0.9239631, 0.5760369),
-                    spline_point(1.0, 1.5, 0.5760369),
-                ])),
-                spline_point(-0.7, spline("minecraft:overworld/ridges_folded", [
-                    spline_point(-1.0, 0.2),
-                    spline_point(0.0, 0.5391705, 0.4608295),
-                    spline_point(1.0, 1.0, 0.4608295),
-                ])),
-                spline_point(-0.4, spline("minecraft:overworld/ridges_folded", [
-                    spline_point(-1.0, 0.2),
-                    spline_point(0.0, 0.5391705, 0.4608295),
-                    spline_point(1.0, 1.0, 0.4608295),
-                ])),
-                spline_point(-0.35, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.2, 0.5),
-                      spline_point(-0.4, 0.5),
-                      spline_point(0.0, 0.5),
-                      spline_point(0.4, 0.5),
-                      spline_point(1.0, 0.6, 0.070000015),
-                ])),
-                spline_point(-0.1, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.05, 0.5),
-                      spline_point(-0.4, 0.01, 0.099999994),
-                      spline_point(0.0, 0.03, 0.099999994),
-                      spline_point(0.4, 0.5, 0.94),
-                      spline_point(1.0, 0.6, 0.070000015),
-                ])),
-                spline_point(0.2, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.05, 0.5),
+            spline_point(-0.1, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.15, 0.5),
+                  spline_point(-0.4, -0.05),
+                  spline_point(0.0, -0.05),
+                  spline_point(0.4, -0.05),
+                  spline_point(1.0, 0.060000002, 0.007000001),
+            ])),
+            spline_point(0.2, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.15, 0.5),
+                  spline_point(-0.4, -0.05),
+                  spline_point(0.0, -0.05),
+                  spline_point(0.4, -0.05),
+                  spline_point(1.0, 0.0),
+            ])),
+            spline_point(0.7, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.02),
+                  spline_point(-0.4, -0.03),
+                  spline_point(0.0, -0.03),
+                  spline_point(0.4, 0.0, 0.06),
+                  spline_point(1.0, 0.0),
+            ])),
+        ])),
+        spline_point(-0.15, spline("minecraft:overworld/erosion", [
+            spline_point(-0.85, spline("minecraft:overworld/ridges_folded", [
+                spline_point(-1.0, -0.08880186, 0.38940096),
+                spline_point(1.0, 0.69000006, 0.38940096),
+            ])),
+            spline_point(-0.7, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.115760356, 0.37788022),
+                  spline_point(1.0, 0.6400001, 0.37788022),
+            ])),
+            spline_point(-0.4, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.2222),
+                  spline_point(-0.75, -0.2222),
+                  spline_point(-0.65, 0.0),
+                  spline_point(0.5954547, 2.9802322E-8),
+                  spline_point(0.6054547, 2.9802322E-8, 0.2534563),
+                  spline_point(1.0, 0.100000024, 0.2534563),
+            ])),
+            spline_point(-0.35, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.3, 0.5),
+                  spline_point(-0.4, 0.05),
+                  spline_point(0.0, 0.05),
+                  spline_point(0.4, 0.05),
+                  spline_point(1.0, 0.060000002, 0.007000001),
+            ])),
+            spline_point(-0.1, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.15, 0.5),
+                  spline_point(-0.4, 0.0),
+                  spline_point(0.0, 0.0),
+                  spline_point(0.4, 0.05, 0.1),
+                  spline_point(1.0, 0.060000002, 0.007000001),
+            ])),
+            spline_point(0.2, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.15),
+                  spline_point(-0.4, 0),
+                  spline_point(0.0, 0),
+                  spline_point(0.4, 0.0),
+                  spline_point(1.0, 0.0),
+            ])),
+            spline_point(0.7, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.02),
+                  spline_point(-0.4, -0.03),
+                  spline_point(0.0, -0.03),
+                  spline_point(0.4, 0.0, 0.06),
+                  spline_point(1.0, 0.0),
+            ])),
+        ])),
+        spline_point(-0.1, spline("minecraft:overworld/erosion", [
+            spline_point(-0.85, spline("minecraft:overworld/ridges_folded", [
+                spline_point(-1.0, -0.08880186, 0.38940096),
+                spline_point(1.0, 0.69000006, 0.38940096),
+            ])),
+            spline_point(-0.7, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.115760356, 0.37788022),
+                  spline_point(1.0, 0.6400001, 0.37788022),
+            ])),
+            spline_point(-0.4, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.2222),
+                  spline_point(-0.75, -0.2222),
+                  spline_point(-0.65, 0.0),
+                  spline_point(0.5954547, 2.9802322E-8),
+                  spline_point(0.6054547, 2.9802322E-8, 0.2534563),
+                  spline_point(1.0, 0.100000024, 0.2534563),
+            ])),
+            spline_point(-0.35, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.25, 0.5),
+                  spline_point(-0.4, 0.05),
+                  spline_point(0.0, 0.05),
+                  spline_point(0.4, 0.05),
+                  spline_point(1.0, 0.060000002, 0.007000001),
+            ])),
+            spline_point(-0.1, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.1, 0.5),
+                  spline_point(-0.4, 0.001, 0.01),
+                  spline_point(0.0, 0.003, 0.01),
+                  spline_point(0.4, 0.05, 0.1),
+                  spline_point(1.0, 0.060000002, 0.007000001),
+            ])),
+            spline_point(0.2, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.1, 0.5),
+                  spline_point(-0.4, 0.01),
+                  spline_point(0.0, 0.01),
+                  spline_point(0.4, 0.03, 0.04),
+                  spline_point(1.0, 0.1, 0.049),
+            ])),
+            spline_point(0.7, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.02),
+                  spline_point(-0.4, -0.03),
+                  spline_point(0.0, -0.03),
+                  spline_point(0.4, 0.03, 0.12),
+                  spline_point(1.0, 0.1, 0.049),
+            ])),
+        ])),
+        spline_point(0.25, spline("minecraft:overworld/erosion", [
+            spline_point(-0.85, spline("minecraft:overworld/ridges_folded", [
+                spline_point(-1.0, 0.20235021),
+                spline_point(0.0, 0.7161751, 0.5138249),
+                spline_point(1.0, 1.23, 0.5138249),
+            ])),
+            spline_point(-0.7, spline("minecraft:overworld/ridges_folded", [
+                spline_point(-1.0, 0.2),
+                spline_point(0.0, 0.44682026, 0.43317974),
+                spline_point(1.0, 0.88, 0.43317974),
+            ])),
+            spline_point(-0.4, spline("minecraft:overworld/ridges_folded", [
+                spline_point(-1.0, 0.2),
+                spline_point(0.0, 0.30829495, 0.3917051),
+                spline_point(1.0, 0.70000005, 0.3917051),
+            ])),
+            spline_point(-0.35, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.25, 0.5),
+                  spline_point(-0.4, 0.35),
+                  spline_point(0.0, 0.35),
+                  spline_point(0.4, 0.35),
+                  spline_point(1.0, 0.42000002, 0.049000014),
+            ])),
+            spline_point(-0.1, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.1, 0.5),
+                  spline_point(-0.4, 0.0069999998, 0.07),
+                  spline_point(0.0, 0.021, 0.07),
+                  spline_point(0.4, 0.35, 0.658),
+                  spline_point(1.0, 0.42000002, 0.049000014),
+            ])),
+            spline_point(0.2, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.1, 0.5),
+                  spline_point(-0.4, 0.01),
+                  spline_point(0.0, 0.01),
+                  spline_point(0.4, 0.03, 0.04),
+                  spline_point(1.0, 0.1, 0.049),
+            ])),
+            spline_point(0.4, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.1, 0.5),
+                  spline_point(-0.4, 0.01),
+                  spline_point(0.0, 0.01),
+                  spline_point(0.4, 0.03, 0.04),
+                  spline_point(1.0, 0.1, 0.049),
+            ])),
+            spline_point(0.45, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.1),
+                  spline_point(-0.4, spline("minecraft:overworld/ridges_folded", [
+                      spline_point(-1.0, -0.1, 0.5),
                       spline_point(-0.4, 0.01),
                       spline_point(0.0, 0.01),
                       spline_point(0.4, 0.03, 0.04),
                       spline_point(1.0, 0.1, 0.049),
-                ])),
-                spline_point(0.4, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.05, 0.5),
+                  ])),
+                  spline_point(0.0, 0.17),
+            ])),
+            spline_point(0.55, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.1),
+                  spline_point(-0.4, spline("minecraft:overworld/ridges_folded", [
+                      spline_point(-1.0, -0.1, 0.5),
                       spline_point(-0.4, 0.01),
                       spline_point(0.0, 0.01),
                       spline_point(0.4, 0.03, 0.04),
                       spline_point(1.0, 0.1, 0.049),
-                ])),
-                spline_point(0.45, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.05),
-                      spline_point(-0.4, spline("minecraft:overworld/ridges_folded", [
-                          spline_point(-1.0, -0.05, 0.5),
-                          spline_point(-0.4, 0.01),
-                          spline_point(0.0, 0.01),
-                          spline_point(0.4, 0.03, 0.04),
-                          spline_point(1.0, 0.1, 0.049),
-                      ])),
-                      spline_point(0.0, 0.17),
-                ])),
-                spline_point(0.55, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.05),
-                      spline_point(-0.4, spline("minecraft:overworld/ridges_folded", [
-                          spline_point(-1.0, -0.05, 0.5),
-                          spline_point(-0.4, 0.01),
-                          spline_point(0.0, 0.01),
-                          spline_point(0.4, 0.03, 0.04),
-                          spline_point(1.0, 0.1, 0.049),
-                      ])),
-                      spline_point(0.0, 0.17),
-                ])),
-                spline_point(0.58, spline("minecraft:overworld/ridges_folded", [
+                  ])),
+                  spline_point(0.0, 0.17),
+            ])),
+            spline_point(0.58, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.1, 0.5),
+                  spline_point(-0.4, 0.01),
+                  spline_point(0.0, 0.01),
+                  spline_point(0.4, 0.03, 0.04),
+                  spline_point(1.0, 0.1, 0.049),
+            ])),
+            spline_point(0.7, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.02),
+                  spline_point(-0.4, -0.03),
+                  spline_point(0.0, -0.03),
+                  spline_point(0.4, 0.03, 0.12),
+                  spline_point(1.0, 0.1, 0.049),
+            ])),
+        ])),
+        spline_point(1.0, spline("minecraft:overworld/erosion", [
+            spline_point(-0.85, spline("minecraft:overworld/ridges_folded", [
+                spline_point(-1.0, 0.34792626),
+                spline_point(0.0, 0.9239631, 0.5760369),
+                spline_point(1.0, 1.5, 0.5760369),
+            ])),
+            spline_point(-0.7, spline("minecraft:overworld/ridges_folded", [
+                spline_point(-1.0, 0.2),
+                spline_point(0.0, 0.5391705, 0.4608295),
+                spline_point(1.0, 1.0, 0.4608295),
+            ])),
+            spline_point(-0.4, spline("minecraft:overworld/ridges_folded", [
+                spline_point(-1.0, 0.2),
+                spline_point(0.0, 0.5391705, 0.4608295),
+                spline_point(1.0, 1.0, 0.4608295),
+            ])),
+            spline_point(-0.35, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.2, 0.5),
+                  spline_point(-0.4, 0.5),
+                  spline_point(0.0, 0.5),
+                  spline_point(0.4, 0.5),
+                  spline_point(1.0, 0.6, 0.070000015),
+            ])),
+            spline_point(-0.1, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.05, 0.5),
+                  spline_point(-0.4, 0.01, 0.099999994),
+                  spline_point(0.0, 0.03, 0.099999994),
+                  spline_point(0.4, 0.5, 0.94),
+                  spline_point(1.0, 0.6, 0.070000015),
+            ])),
+            spline_point(0.2, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.05, 0.5),
+                  spline_point(-0.4, 0.01),
+                  spline_point(0.0, 0.01),
+                  spline_point(0.4, 0.03, 0.04),
+                  spline_point(1.0, 0.1, 0.049),
+            ])),
+            spline_point(0.4, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.05, 0.5),
+                  spline_point(-0.4, 0.01),
+                  spline_point(0.0, 0.01),
+                  spline_point(0.4, 0.03, 0.04),
+                  spline_point(1.0, 0.1, 0.049),
+            ])),
+            spline_point(0.45, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.05),
+                  spline_point(-0.4, spline("minecraft:overworld/ridges_folded", [
                       spline_point(-1.0, -0.05, 0.5),
                       spline_point(-0.4, 0.01),
                       spline_point(0.0, 0.01),
                       spline_point(0.4, 0.03, 0.04),
                       spline_point(1.0, 0.1, 0.049),
-                ])),
-                spline_point(0.7, spline("minecraft:overworld/ridges_folded", [
-                      spline_point(-1.0, -0.02, 0.015),
-                      spline_point(-0.4, -0.01),
-                      spline_point(0.0, -0.01),
+                  ])),
+                  spline_point(0.0, 0.17),
+            ])),
+            spline_point(0.55, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.05),
+                  spline_point(-0.4, spline("minecraft:overworld/ridges_folded", [
+                      spline_point(-1.0, -0.05, 0.5),
+                      spline_point(-0.4, 0.01),
+                      spline_point(0.0, 0.01),
                       spline_point(0.4, 0.03, 0.04),
                       spline_point(1.0, 0.1, 0.049),
-                ])),
+                  ])),
+                  spline_point(0.0, 0.17),
             ])),
-        ])
-    ), blend_offset());
+            spline_point(0.58, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.05, 0.5),
+                  spline_point(-0.4, 0.01),
+                  spline_point(0.0, 0.01),
+                  spline_point(0.4, 0.03, 0.04),
+                  spline_point(1.0, 0.1, 0.049),
+            ])),
+            spline_point(0.7, spline("minecraft:overworld/ridges_folded", [
+                  spline_point(-1.0, -0.02, 0.015),
+                  spline_point(-0.4, -0.01),
+                  spline_point(0.0, -0.01),
+                  spline_point(0.4, 0.03, 0.04),
+                  spline_point(1.0, 0.1, 0.049),
+            ])),
+        ])),
+    ])
+), blend_offset());
 
-    export factor = apply_blending(df_spline(
-        spline("minecraft:overworld/continents", [
-            spline_point(-0.19, 3.95),
-            spline_point(-0.15, spline("minecraft:overworld/erosion", [
-                spline_point(-0.6, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.2, 6.3),
-                    spline_point(0.2, 6.25),
-                ])),
-                spline_point(-0.5, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.05, 6.3),
-                    spline_point(0.05, 2.67),
-                ])),
-                spline_point(-0.35, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.2, 6.3),
-                    spline_point(0.2, 6.25),
-                ])),
-                spline_point(-0.25, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.2, 6.3),
-                    spline_point(0.2, 6.25),
-                ])),
-                spline_point(-0.1, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.05, 2.67),
-                    spline_point(0.05, 6.3),
-                ])),
-                spline_point(0.03, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.2, 6.3),
-                    spline_point(0.2, 6.25),
-                ])),
-                spline_point(0.35, 6.25),
-                spline_point(0.45, spline("minecraft:overworld/ridges_folded", [
-                    spline_point(-0.9, 6.25),
-                    spline_point(-0.69, spline("minecraft:overworld/ridges", [
-                        spline_point(0.0, 6.25),
-                        spline_point(0.1, 0.625),
-                    ])),
-                ])),
-                spline_point(0.55, spline("minecraft:overworld/ridges_folded", [
-                    spline_point(-0.9, 6.25),
-                    spline_point(-0.69, spline("minecraft:overworld/ridges", [
-                        spline_point(0.0, 6.25),
-                        spline_point(0.1, 0.625),
-                    ])),
-                ])),
-                spline_point(0.62, 6.25),
+export factor = apply_blending(df_spline(
+    spline("minecraft:overworld/continents", [
+        spline_point(-0.19, 3.95),
+        spline_point(-0.15, spline("minecraft:overworld/erosion", [
+            spline_point(-0.6, spline("minecraft:overworld/ridges", [
+                spline_point(-0.2, 6.3),
+                spline_point(0.2, 6.25),
             ])),
-            spline_point(-0.1, spline("minecraft:overworld/erosion", [
-                spline_point(-0.6, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.2, 6.3),
-                    spline_point(0.2, 5.47),
-                ])),
-                spline_point(-0.5, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.05, 6.3),
-                    spline_point(0.05, 2.67),
-                ])),
-                spline_point(-0.35, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.2, 6.3),
-                    spline_point(0.2, 5.47),
-                ])),
-                spline_point(-0.25, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.2, 6.3),
-                    spline_point(0.2, 5.47),
-                ])),
-                spline_point(-0.1, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.05, 2.67),
-                    spline_point(0.05, 6.3),
-                ])),
-                spline_point(0.03, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.2, 6.3),
-                    spline_point(0.2, 5.47),
-                ])),
-                spline_point(0.35, 5.47),
-                spline_point(0.45, spline("minecraft:overworld/ridges_folded", [
-                    spline_point(-0.9, 5.47),
-                    spline_point(-0.69, spline("minecraft:overworld/ridges", [
-                        spline_point(0.0, 5.47),
-                        spline_point(0.1, 0.625),
-                    ])),
-                ])),
-                spline_point(0.55, spline("minecraft:overworld/ridges_folded", [
-                    spline_point(-0.9, 5.47),
-                    spline_point(-0.69, spline("minecraft:overworld/ridges", [
-                        spline_point(0.0, 5.47),
-                        spline_point(0.1, 0.625),
-                    ])),
-                ])),
-                spline_point(0.62, 5.47),
+            spline_point(-0.5, spline("minecraft:overworld/ridges", [
+                spline_point(-0.05, 6.3),
+                spline_point(0.05, 2.67),
             ])),
-            spline_point(0.03, spline("minecraft:overworld/erosion", [
-                spline_point(-0.6, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.2, 6.3),
-                    spline_point(0.2, 5.08),
-                ])),
-                spline_point(-0.5, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.05, 6.3),
-                    spline_point(0.05, 2.67),
-                ])),
-                spline_point(-0.35, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.2, 6.3),
-                    spline_point(0.2, 5.08),
-                ])),
-                spline_point(-0.25, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.2, 6.3),
-                    spline_point(0.2, 5.08),
-                ])),
-                spline_point(-0.1, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.05, 2.67),
-                    spline_point(0.05, 6.3),
-                ])),
-                spline_point(0.03, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.2, 6.3),
-                    spline_point(0.2, 5.08),
-                ])),
-                spline_point(0.35, 5.08),
-                spline_point(0.45, spline("minecraft:overworld/ridges_folded", [
-                    spline_point(-0.9, 5.08),
-                    spline_point(-0.69, spline("minecraft:overworld/ridges", [
-                        spline_point(0.0, 5.08),
-                        spline_point(0.1, 0.625),
-                    ])),
-                ])),
-                spline_point(0.55, spline("minecraft:overworld/ridges_folded", [
-                    spline_point(-0.9, 5.47),
-                    spline_point(-0.69, spline("minecraft:overworld/ridges", [
-                        spline_point(0.0, 5.08),
-                        spline_point(0.1, 0.625),
-                    ])),
-                ])),
-                spline_point(0.62, 5.08),
+            spline_point(-0.35, spline("minecraft:overworld/ridges", [
+                spline_point(-0.2, 6.3),
+                spline_point(0.2, 6.25),
             ])),
-            spline_point(0.06, spline("minecraft:overworld/erosion", [
-                spline_point(-0.6, spline("minecraft:overworld/ridges", [
+            spline_point(-0.25, spline("minecraft:overworld/ridges", [
+                spline_point(-0.2, 6.3),
+                spline_point(0.2, 6.25),
+            ])),
+            spline_point(-0.1, spline("minecraft:overworld/ridges", [
+                spline_point(-0.05, 2.67),
+                spline_point(0.05, 6.3),
+            ])),
+            spline_point(0.03, spline("minecraft:overworld/ridges", [
+                spline_point(-0.2, 6.3),
+                spline_point(0.2, 6.25),
+            ])),
+            spline_point(0.35, 6.25),
+            spline_point(0.45, spline("minecraft:overworld/ridges_folded", [
+                spline_point(-0.9, 6.25),
+                spline_point(-0.69, spline("minecraft:overworld/ridges", [
+                    spline_point(0.0, 6.25),
+                    spline_point(0.1, 0.625),
+                ])),
+            ])),
+            spline_point(0.55, spline("minecraft:overworld/ridges_folded", [
+                spline_point(-0.9, 6.25),
+                spline_point(-0.69, spline("minecraft:overworld/ridges", [
+                    spline_point(0.0, 6.25),
+                    spline_point(0.1, 0.625),
+                ])),
+            ])),
+            spline_point(0.62, 6.25),
+        ])),
+        spline_point(-0.1, spline("minecraft:overworld/erosion", [
+            spline_point(-0.6, spline("minecraft:overworld/ridges", [
+                spline_point(-0.2, 6.3),
+                spline_point(0.2, 5.47),
+            ])),
+            spline_point(-0.5, spline("minecraft:overworld/ridges", [
+                spline_point(-0.05, 6.3),
+                spline_point(0.05, 2.67),
+            ])),
+            spline_point(-0.35, spline("minecraft:overworld/ridges", [
+                spline_point(-0.2, 6.3),
+                spline_point(0.2, 5.47),
+            ])),
+            spline_point(-0.25, spline("minecraft:overworld/ridges", [
+                spline_point(-0.2, 6.3),
+                spline_point(0.2, 5.47),
+            ])),
+            spline_point(-0.1, spline("minecraft:overworld/ridges", [
+                spline_point(-0.05, 2.67),
+                spline_point(0.05, 6.3),
+            ])),
+            spline_point(0.03, spline("minecraft:overworld/ridges", [
+                spline_point(-0.2, 6.3),
+                spline_point(0.2, 5.47),
+            ])),
+            spline_point(0.35, 5.47),
+            spline_point(0.45, spline("minecraft:overworld/ridges_folded", [
+                spline_point(-0.9, 5.47),
+                spline_point(-0.69, spline("minecraft:overworld/ridges", [
+                    spline_point(0.0, 5.47),
+                    spline_point(0.1, 0.625),
+                ])),
+            ])),
+            spline_point(0.55, spline("minecraft:overworld/ridges_folded", [
+                spline_point(-0.9, 5.47),
+                spline_point(-0.69, spline("minecraft:overworld/ridges", [
+                    spline_point(0.0, 5.47),
+                    spline_point(0.1, 0.625),
+                ])),
+            ])),
+            spline_point(0.62, 5.47),
+        ])),
+        spline_point(0.03, spline("minecraft:overworld/erosion", [
+            spline_point(-0.6, spline("minecraft:overworld/ridges", [
+                spline_point(-0.2, 6.3),
+                spline_point(0.2, 5.08),
+            ])),
+            spline_point(-0.5, spline("minecraft:overworld/ridges", [
+                spline_point(-0.05, 6.3),
+                spline_point(0.05, 2.67),
+            ])),
+            spline_point(-0.35, spline("minecraft:overworld/ridges", [
+                spline_point(-0.2, 6.3),
+                spline_point(0.2, 5.08),
+            ])),
+            spline_point(-0.25, spline("minecraft:overworld/ridges", [
+                spline_point(-0.2, 6.3),
+                spline_point(0.2, 5.08),
+            ])),
+            spline_point(-0.1, spline("minecraft:overworld/ridges", [
+                spline_point(-0.05, 2.67),
+                spline_point(0.05, 6.3),
+            ])),
+            spline_point(0.03, spline("minecraft:overworld/ridges", [
+                spline_point(-0.2, 6.3),
+                spline_point(0.2, 5.08),
+            ])),
+            spline_point(0.35, 5.08),
+            spline_point(0.45, spline("minecraft:overworld/ridges_folded", [
+                spline_point(-0.9, 5.08),
+                spline_point(-0.69, spline("minecraft:overworld/ridges", [
+                    spline_point(0.0, 5.08),
+                    spline_point(0.1, 0.625),
+                ])),
+            ])),
+            spline_point(0.55, spline("minecraft:overworld/ridges_folded", [
+                spline_point(-0.9, 5.47),
+                spline_point(-0.69, spline("minecraft:overworld/ridges", [
+                    spline_point(0.0, 5.08),
+                    spline_point(0.1, 0.625),
+                ])),
+            ])),
+            spline_point(0.62, 5.08),
+        ])),
+        spline_point(0.06, spline("minecraft:overworld/erosion", [
+            spline_point(-0.6, spline("minecraft:overworld/ridges", [
+                spline_point(-0.2, 6.3),
+                spline_point(0.2, 4.69),
+            ])),
+            spline_point(-0.5, spline("minecraft:overworld/ridges", [
+                spline_point(-0.05, 6.3),
+                spline_point(0.05, 2.67),
+            ])),
+            spline_point(-0.35, spline("minecraft:overworld/ridges", [
+                spline_point(-0.2, 6.3),
+                spline_point(0.2, 4.69),
+            ])),
+            spline_point(-0.25, spline("minecraft:overworld/ridges", [
+                spline_point(-0.2, 6.3),
+                spline_point(0.2, 4.69),
+            ])),
+            spline_point(-0.1, spline("minecraft:overworld/ridges", [
+                spline_point(-0.05, 2.67),
+                spline_point(0.05, 6.3),
+            ])),
+            spline_point(0.03, spline("minecraft:overworld/ridges", [
+                spline_point(-0.2, 6.3),
+                spline_point(0.2, 4.69),
+            ])),
+            spline_point(0.05, spline("minecraft:overworld/ridges_folded", [
+                spline_point(0.45, spline("minecraft:overworld/ridges", [
                     spline_point(-0.2, 6.3),
                     spline_point(0.2, 4.69),
                 ])),
-                spline_point(-0.5, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.05, 6.3),
-                    spline_point(0.05, 2.67),
-                ])),
-                spline_point(-0.35, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.2, 6.3),
-                    spline_point(0.2, 4.69),
-                ])),
-                spline_point(-0.25, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.2, 6.3),
-                    spline_point(0.2, 4.69),
-                ])),
-                spline_point(-0.1, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.05, 2.67),
-                    spline_point(0.05, 6.3),
-                ])),
-                spline_point(0.03, spline("minecraft:overworld/ridges", [
-                    spline_point(-0.2, 6.3),
-                    spline_point(0.2, 4.69),
-                ])),
-                spline_point(0.05, spline("minecraft:overworld/ridges_folded", [
-                    spline_point(0.45, spline("minecraft:overworld/ridges", [
-                        spline_point(-0.2, 6.3),
-                        spline_point(0.2, 4.69),
-                    ])),
-                    spline_point(0.7, 1.56),
-                ])),
-                spline_point(0.4, spline("minecraft:overworld/ridges_folded", [
-                    spline_point(-0.45, spline("minecraft:overworld/ridges", [
-                        spline_point(-0.2, 6.3),
-                        spline_point(0.2, 4.69),
-                    ])),
-                    spline_point(0.7, 1.56),
-                ])),
-                spline_point(0.45, spline("minecraft:overworld/ridges_folded", [
-                    spline_point(-0.7, spline("minecraft:overworld/ridges", [
-                        spline_point(-0.2, 6.3),
-                        spline_point(0.2, 4.69),
-                    ])),
-                    spline_point(-0.15, 1.56),
-                ])),
-                spline_point(0.55, spline("minecraft:overworld/ridges_folded", [
-                    spline_point(-0.7, spline("minecraft:overworld/ridges", [
-                        spline_point(-0.2, 6.3),
-                        spline_point(0.2, 4.69),
-                    ])),
-                    spline_point(-0.15, 1.56),
-                ])),
-                spline_point(0.58, 4.69),
+                spline_point(0.7, 1.56),
             ])),
-        ])
-    ), 10.0);
+            spline_point(0.4, spline("minecraft:overworld/ridges_folded", [
+                spline_point(-0.45, spline("minecraft:overworld/ridges", [
+                    spline_point(-0.2, 6.3),
+                    spline_point(0.2, 4.69),
+                ])),
+                spline_point(0.7, 1.56),
+            ])),
+            spline_point(0.45, spline("minecraft:overworld/ridges_folded", [
+                spline_point(-0.7, spline("minecraft:overworld/ridges", [
+                    spline_point(-0.2, 6.3),
+                    spline_point(0.2, 4.69),
+                ])),
+                spline_point(-0.15, 1.56),
+            ])),
+            spline_point(0.55, spline("minecraft:overworld/ridges_folded", [
+                spline_point(-0.7, spline("minecraft:overworld/ridges", [
+                    spline_point(-0.2, 6.3),
+                    spline_point(0.2, 4.69),
+                ])),
+                spline_point(-0.15, 1.56),
+            ])),
+            spline_point(0.58, 4.69),
+        ])),
+    ])
+), 10.0);
 
-    export jaggedness = apply_blending(df_spline(
-        spline("minecraft:overworld/continents", [
-            spline_point(-0.11, 0.0),
-            spline_point(0.03, spline("minecraft:overworld/erosion", [
-                spline_point(-1.0, spline("minecraft:ridges_folded", [
-                    spline_point(0.19999999, 0.0),
-                    spline_point(0.44999996, 0.0),
-                    spline_point(1.0, spline("minecraft:overworld/ridges", [
-                        spline_point(-0.01, 0.63),
-                        spline_point(-0.01, 0.3),
-                    ])),
+export jaggedness = apply_blending(df_spline(
+    spline("minecraft:overworld/continents", [
+        spline_point(-0.11, 0.0),
+        spline_point(0.03, spline("minecraft:overworld/erosion", [
+            spline_point(-1.0, spline("minecraft:ridges_folded", [
+                spline_point(0.19999999, 0.0),
+                spline_point(0.44999996, 0.0),
+                spline_point(1.0, spline("minecraft:overworld/ridges", [
+                    spline_point(-0.01, 0.63),
+                    spline_point(-0.01, 0.3),
                 ])),
-                spline_point(-0.78, spline("minecraft:ridges_folded", [
-                    spline_point(0.19999999, 0.0),
-                    spline_point(0.44999996, 0.0),
-                    spline_point(1.0, spline("minecraft:overworld/ridges", [
-                        spline_point(-0.01, 0.315),
-                        spline_point(-0.01, 0.15),
-                    ])),
-                ])),
-                spline_point(-0.5775, spline("minecraft:ridges_folded", [
-                    spline_point(0.19999999, 0.0),
-                    spline_point(0.44999996, 0.0),
-                    spline_point(1.0, spline("minecraft:overworld/ridges", [
-                        spline_point(-0.01, 0.315),
-                        spline_point(-0.01, 0.15),
-                    ])),
-                ])),
-                spline_point(-0.375, 0.0),
             ])),
-            spline_point(0.65, spline("minecraft:overworld/erosion", [
-                spline_point(-1.0, spline("minecraft:ridges_folded", [
-                    spline_point(0.19999999, 0.0),
-                    spline_point(0.44999996, spline("minecraft:overworld/ridges", [
-                        spline_point(-0.01, 0.63),
-                        spline_point(-0.01, 0.3),
-                    ])),
-                    spline_point(1.0, spline("minecraft:overworld/ridges", [
-                        spline_point(-0.01, 0.63),
-                        spline_point(-0.01, 0.3),
-                    ])),
+            spline_point(-0.78, spline("minecraft:ridges_folded", [
+                spline_point(0.19999999, 0.0),
+                spline_point(0.44999996, 0.0),
+                spline_point(1.0, spline("minecraft:overworld/ridges", [
+                    spline_point(-0.01, 0.315),
+                    spline_point(-0.01, 0.15),
                 ])),
-                spline_point(-0.78, spline("minecraft:ridges_folded", [
-                    spline_point(0.19999999, 0.0),
-                    spline_point(0.44999996, 0.0),
-                    spline_point(1.0, spline("minecraft:overworld/ridges", [
-                        spline_point(-0.01, 0.63),
-                        spline_point(-0.01, 0.3),
-                    ])),
-                ])),
-                spline_point(-0.5775, spline("minecraft:ridges_folded", [
-                    spline_point(0.19999999, 0.0),
-                    spline_point(0.44999996, 0.0),
-                    spline_point(1.0, spline("minecraft:overworld/ridges", [
-                        spline_point(-0.01, 0.63),
-                        spline_point(-0.01, 0.3),
-                    ])),
-                ])),
-                spline_point(-0.375, 0.0),
             ])),
-        ])
-    ), 0.0);
-}
+            spline_point(-0.5775, spline("minecraft:ridges_folded", [
+                spline_point(0.19999999, 0.0),
+                spline_point(0.44999996, 0.0),
+                spline_point(1.0, spline("minecraft:overworld/ridges", [
+                    spline_point(-0.01, 0.315),
+                    spline_point(-0.01, 0.15),
+                ])),
+            ])),
+            spline_point(-0.375, 0.0),
+        ])),
+        spline_point(0.65, spline("minecraft:overworld/erosion", [
+            spline_point(-1.0, spline("minecraft:ridges_folded", [
+                spline_point(0.19999999, 0.0),
+                spline_point(0.44999996, spline("minecraft:overworld/ridges", [
+                    spline_point(-0.01, 0.63),
+                    spline_point(-0.01, 0.3),
+                ])),
+                spline_point(1.0, spline("minecraft:overworld/ridges", [
+                    spline_point(-0.01, 0.63),
+                    spline_point(-0.01, 0.3),
+                ])),
+            ])),
+            spline_point(-0.78, spline("minecraft:ridges_folded", [
+                spline_point(0.19999999, 0.0),
+                spline_point(0.44999996, 0.0),
+                spline_point(1.0, spline("minecraft:overworld/ridges", [
+                    spline_point(-0.01, 0.63),
+                    spline_point(-0.01, 0.3),
+                ])),
+            ])),
+            spline_point(-0.5775, spline("minecraft:ridges_folded", [
+                spline_point(0.19999999, 0.0),
+                spline_point(0.44999996, 0.0),
+                spline_point(1.0, spline("minecraft:overworld/ridges", [
+                    spline_point(-0.01, 0.63),
+                    spline_point(-0.01, 0.3),
+                ])),
+            ])),
+            spline_point(-0.375, 0.0),
+        ])),
+    ])
+), 0.0);

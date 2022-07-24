@@ -171,6 +171,12 @@ pub struct ExportFunction {
     pub json: JsonElement,
 }
 
+#[derive(Debug, PartialEq)]
+pub struct CompiledExport {
+    pub name: String,
+    pub json: JsonElement,
+}
+
 #[derive(Debug)]
 pub struct Template {
     pub name: String,
@@ -187,7 +193,7 @@ pub struct Module {
     pub name: String,
     pub sub_modules: Vec<Rc<RefCell<Module>>>,
     pub templates: Vec<Rc<RefCell<Template>>>,
-    pub exports: Vec<Rc<RefCell<ExportFunction>>>,
+    pub exports: Vec<Rc<RefCell<CompiledExport>>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

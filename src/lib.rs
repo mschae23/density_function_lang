@@ -3,10 +3,10 @@ pub mod compiler;
 
 use std::cell::RefCell;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use clap::Parser as ClapParser;
-use crate::compiler::ast::ExportFunction;
+use crate::compiler::ast::{Decl, ExportFunction};
 use crate::compiler::compiler::Compiler;
 use crate::compiler::lexer::Lexer;
 use crate::compiler::parser::Parser;
@@ -24,7 +24,7 @@ pub struct Config {
     pub verbose: bool,
 }
 
-pub fn compile(path: PathBuf, target_dir: PathBuf, verbose: bool) -> Result<Option<(Vec<Rc<RefCell<ExportFunction>>>, Compiler)>, std::io::Error> {
+pub fn parse(path: &Path) -> Result<Option<Vec<Decl>>, std::io::Error> {
     let source = std::fs::read_to_string(path.to_owned())?;
 
     let lexer = Lexer::new(&source);
@@ -35,8 +35,18 @@ pub fn compile(path: PathBuf, target_dir: PathBuf, verbose: bool) -> Result<Opti
         return Ok(None);
     }
 
+    Ok(Some(statements))
+}
+
+pub fn compile(path: PathBuf, target_dir: PathBuf, verbose: bool) -> Result<Option<(Vec<Rc<RefCell<ExportFunction>>>, Compiler)>, std::io::Error> {
+    let statements = match parse(&path)? {
+        Some(result) => result,
+        None => return Ok(None),
+    };
+
     let mut compiler = Compiler::new(path.to_owned(), target_dir.to_owned(), verbose);
-    let functions = compiler.compile(statements);
+    compiler.compile(statements);
+    let functions = compiler.collect_exports();
 
     if compiler.had_error() {
         return Ok(None);
