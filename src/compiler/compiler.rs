@@ -9,6 +9,7 @@ struct TemplateScope {
 }
 
 struct TemplateCall {
+    pub template: Rc<RefCell<Template>>,
     pub name: String,
     pub receiver: bool,
     pub arg_count: i32,
@@ -388,13 +389,17 @@ impl Compiler {
         }
 
         self.template_scopes.push(TemplateScope { args: scope_args });
-        self.template_call_stack.push(TemplateCall {
-            name: template_borrow.name.to_owned(),
-            receiver: template_borrow.receiver,
-            arg_count: template_borrow.args.len() as i32,
-            path: Rc::clone(&self.path),
-            line: token_pos.line, column: token_pos.column,
-        });
+
+        if self.verbose {
+            self.template_call_stack.push(TemplateCall {
+                template: Rc::clone(&template),
+                name: template_borrow.name.to_owned(),
+                receiver: template_borrow.receiver,
+                arg_count: template_borrow.args.len() as i32,
+                path: Rc::clone(&self.path),
+                line: token_pos.line, column: token_pos.column,
+            });
+        }
 
         let mut template_current_modules: Vec<Rc<RefCell<Module>>> = template_borrow.current_modules.iter()
             .map(|module| module.upgrade().expect("Internal compiler error: Module got dropped")).collect();
@@ -407,7 +412,7 @@ impl Compiler {
         std::mem::swap(&mut self.path, &mut template_file_path);
 
         let expr = self.compile_template_expr(template_expr.clone(), static_expr);
-        self.template_call_stack.pop();
+        if self.verbose { self.template_call_stack.pop(); }
         self.template_scopes.pop();
         std::mem::swap(&mut self.current_module, &mut template_current_modules);
         std::mem::swap(&mut self.path, &mut template_file_path);
@@ -716,8 +721,20 @@ impl Compiler {
                     args.push(template_call.arg_count.to_string());
                 }
 
-                eprintln!("    at [{}:{}:{}] {}({})", template_call.path.borrow().to_string_lossy(),
-                    template_call.line, template_call.column, &template_call.name, args.join(", "));
+                let template = template_call.template.borrow();
+                let template_path = template.current_modules.iter()
+                    .map(|module| module.upgrade()).map(|module| module
+                        .map(|module| module.borrow().name.to_owned()))
+                    .fold(Some(String::from("")), |acc, module| if let Some(mut acc) = acc {
+                        if let Some(module) = module {
+                            acc.push_str(&module);
+                            acc.push('.');
+                            Some(acc)
+                        } else { None }
+                    } else { None }).unwrap_or_else(|| String::new());
+
+                eprintln!("    at [{}:{}:{}] {}{}({})", template_call.path.borrow().to_string_lossy(),
+                    template_call.line, template_call.column, template_path, &template_call.name, args.join(", "));
             }
         }
 
