@@ -651,6 +651,14 @@ impl Compiler {
 
             return self.compile_expr(args.into_iter()
                 .next().expect("Internal compiler error: builtin.static() argument missing"), true);
+        } else if "nonstatic" == name.source() {
+            if args.len() != 1 {
+                self.error_at(*name.start(), "builtin.nonstatic() needs exactly one argument", true);
+                return JsonElement::Error;
+            }
+
+            return self.compile_expr(args.into_iter()
+                .next().expect("Internal compiler error: builtin.nonstatic() argument missing"), false);
         }
 
         self.error_at(*name.start(), &format!("Unknown built-in function: '{}'", name.source()), false);

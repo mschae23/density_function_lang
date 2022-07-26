@@ -102,12 +102,12 @@ module df {
 
     template noise(noise, scale_xz, scale_y) { { "type": "minecraft:noise", "noise": noise, "xz_scale": scale_xz, "y_scale": scale_y } }
 
-    template range_choice(arg, min_inclusive, max_inclusive, when_in_range, when_out_of_range) {
-        validate.number(min_inclusive); validate.number(max_inclusive);
+    template range_choice(arg, min_inclusive, max_exclusive, when_in_range, when_out_of_range) {
+        validate.number(min_inclusive); validate.number(max_exclusive);
 
         {
             "type": "minecraft:range_choice", "input": arg,
-            "min_inclusive": min_inclusive, "max_inclusive": max_inclusive,
+            "min_inclusive": min_inclusive, "max_exclusive": max_exclusive,
             "when_in_range": when_in_range, "when_out_of_range": when_out_of_range
         }
     }

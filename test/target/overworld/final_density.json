@@ -43,7 +43,7 @@
                                                 "type": "minecraft:range_choice",
                                                 "input": "minecraft:overworld/sloped_cheese",
                                                 "min_inclusive": -1000000.0,
-                                                "max_inclusive": 1.5625,
+                                                "max_exclusive": 1.5625,
                                                 "when_in_range": {
                                                     "type": "minecraft:min",
                                                     "argument1": "minecraft:overworld/sloped_cheese",
@@ -116,7 +116,7 @@
                                                         "type": "minecraft:range_choice",
                                                         "input": "minecraft:overworld/caves/pillars",
                                                         "min_inclusive": -1000000.0,
-                                                        "max_inclusive": 0.03,
+                                                        "max_exclusive": 0.03,
                                                         "when_in_range": -1000000.0,
                                                         "when_out_of_range": "minecraft:overworld/caves/pillars"
                                                     }
