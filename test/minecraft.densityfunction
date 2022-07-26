@@ -132,8 +132,8 @@ module df {
     template quarter_negative(arg) { simple_1("minecraft:quarter_negative", arg) }
     template squeeze(arg) { simple_1("minecraft:squeeze", arg) }
 
-    template weird_scaled_sampler(arg, noise, rarity_value_mapper) { {
-        "type": "minecraft:weird_scaled_sampler",
+    template weird_scaled_sampler(input, noise, rarity_value_mapper) { {
+        "type": "minecraft:weird_scaled_sampler", "input": input,
         "noise": noise, "rarity_value_mapper": rarity_value_mapper
     } }
 

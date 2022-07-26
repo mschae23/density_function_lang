@@ -502,7 +502,7 @@ export jaggedness = apply_blending(df_spline(
     spline("minecraft:overworld/continents", [
         spline_point(-0.11, 0.0),
         spline_point(0.03, spline("minecraft:overworld/erosion", [
-            spline_point(-1.0, spline("minecraft:ridges_folded", [
+            spline_point(-1.0, spline("minecraft:overworld/ridges_folded", [
                 spline_point(0.19999999, 0.0),
                 spline_point(0.44999996, 0.0),
                 spline_point(1.0, spline("minecraft:overworld/ridges", [
@@ -510,7 +510,7 @@ export jaggedness = apply_blending(df_spline(
                     spline_point(-0.01, 0.3),
                 ])),
             ])),
-            spline_point(-0.78, spline("minecraft:ridges_folded", [
+            spline_point(-0.78, spline("minecraft:overworld/ridges_folded", [
                 spline_point(0.19999999, 0.0),
                 spline_point(0.44999996, 0.0),
                 spline_point(1.0, spline("minecraft:overworld/ridges", [
@@ -518,7 +518,7 @@ export jaggedness = apply_blending(df_spline(
                     spline_point(-0.01, 0.15),
                 ])),
             ])),
-            spline_point(-0.5775, spline("minecraft:ridges_folded", [
+            spline_point(-0.5775, spline("minecraft:overworld/ridges_folded", [
                 spline_point(0.19999999, 0.0),
                 spline_point(0.44999996, 0.0),
                 spline_point(1.0, spline("minecraft:overworld/ridges", [
@@ -529,7 +529,7 @@ export jaggedness = apply_blending(df_spline(
             spline_point(-0.375, 0.0),
         ])),
         spline_point(0.65, spline("minecraft:overworld/erosion", [
-            spline_point(-1.0, spline("minecraft:ridges_folded", [
+            spline_point(-1.0, spline("minecraft:overworld/ridges_folded", [
                 spline_point(0.19999999, 0.0),
                 spline_point(0.44999996, spline("minecraft:overworld/ridges", [
                     spline_point(-0.01, 0.63),
@@ -540,7 +540,7 @@ export jaggedness = apply_blending(df_spline(
                     spline_point(-0.01, 0.3),
                 ])),
             ])),
-            spline_point(-0.78, spline("minecraft:ridges_folded", [
+            spline_point(-0.78, spline("minecraft:overworld/ridges_folded", [
                 spline_point(0.19999999, 0.0),
                 spline_point(0.44999996, 0.0),
                 spline_point(1.0, spline("minecraft:overworld/ridges", [
@@ -548,7 +548,7 @@ export jaggedness = apply_blending(df_spline(
                     spline_point(-0.01, 0.3),
                 ])),
             ])),
-            spline_point(-0.5775, spline("minecraft:ridges_folded", [
+            spline_point(-0.5775, spline("minecraft:overworld/ridges_folded", [
                 spline_point(0.19999999, 0.0),
                 spline_point(0.44999996, 0.0),
                 spline_point(1.0, spline("minecraft:overworld/ridges", [

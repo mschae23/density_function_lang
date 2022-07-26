@@ -33,7 +33,7 @@
                                                 "derivative": 0.0,
                                                 "location": -1.0,
                                                 "value": {
-                                                    "coordinate": "minecraft:ridges_folded",
+                                                    "coordinate": "minecraft:overworld/ridges_folded",
                                                     "points": [
                                                         {
                                                             "derivative": 0.0,
@@ -71,7 +71,7 @@
                                                 "derivative": 0.0,
                                                 "location": -0.78,
                                                 "value": {
-                                                    "coordinate": "minecraft:ridges_folded",
+                                                    "coordinate": "minecraft:overworld/ridges_folded",
                                                     "points": [
                                                         {
                                                             "derivative": 0.0,
@@ -109,7 +109,7 @@
                                                 "derivative": 0.0,
                                                 "location": -0.5775,
                                                 "value": {
-                                                    "coordinate": "minecraft:ridges_folded",
+                                                    "coordinate": "minecraft:overworld/ridges_folded",
                                                     "points": [
                                                         {
                                                             "derivative": 0.0,
@@ -161,7 +161,7 @@
                                                 "derivative": 0.0,
                                                 "location": -1.0,
                                                 "value": {
-                                                    "coordinate": "minecraft:ridges_folded",
+                                                    "coordinate": "minecraft:overworld/ridges_folded",
                                                     "points": [
                                                         {
                                                             "derivative": 0.0,
@@ -213,7 +213,7 @@
                                                 "derivative": 0.0,
                                                 "location": -0.78,
                                                 "value": {
-                                                    "coordinate": "minecraft:ridges_folded",
+                                                    "coordinate": "minecraft:overworld/ridges_folded",
                                                     "points": [
                                                         {
                                                             "derivative": 0.0,
@@ -251,7 +251,7 @@
                                                 "derivative": 0.0,
                                                 "location": -0.5775,
                                                 "value": {
-                                                    "coordinate": "minecraft:ridges_folded",
+                                                    "coordinate": "minecraft:overworld/ridges_folded",
                                                     "points": [
                                                         {
                                                             "derivative": 0.0,
