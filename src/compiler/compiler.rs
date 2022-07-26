@@ -103,14 +103,10 @@ impl Compiler {
     }
 
     fn compile_template(&mut self, name: Token, this: Option<Token>, args: Vec<Token>, expr: TemplateExpr) {
-        let current_module = self.current_module();
+        let current_module = self.current_or_outer_module();
         let mut current_module = current_module.borrow_mut();
-        let outer_current_module = self.outer_current_module();
-        let outer_current_module = outer_current_module.as_ref().map(|module| module.borrow());
 
-        if current_module.templates.iter()
-            .chain(outer_current_module.iter().flat_map(|module| module.templates.iter()))
-            .any(|template|
+        if current_module.templates.iter().any(|template|
             *template.borrow().name == *name.source() && template.borrow().args.len() == args.len() && template.borrow().receiver == this.is_some()) {
             self.error_at(*name.start(), "Tried to define multiple templates with the same name", false);
             return;
@@ -130,19 +126,14 @@ impl Compiler {
     }
 
     fn compile_export(&mut self, name: Token, expr: Expr) {
-        let current_module = self.current_module();
+        let current_module = self.current_or_outer_module();
         let current_module_borrow = current_module.borrow();
-        let outer_current_module = self.outer_current_module();
-        let outer_current_module_borrow = outer_current_module.as_ref().map(|module| module.borrow());
 
-        if current_module_borrow.exports.iter()
-            .chain(outer_current_module_borrow.iter().flat_map(|module| module.exports.iter()))
-            .any(|function| *function.borrow().name == *name.source()) {
+        if current_module_borrow.exports.iter().any(|function| *function.borrow().name == *name.source()) {
             self.error_at(*name.start(), "Tried to define multiple exports with the same name", false);
             return;
         }
 
-        drop(outer_current_module_borrow);
         drop(current_module_borrow);
         let expr = self.compile_expr(expr, false);
 
@@ -154,16 +145,13 @@ impl Compiler {
     }
 
     fn compile_module(&mut self, name: Token, statements: Vec<Decl>) {
-        let current_module = self.current_module();
+        let current_module = self.current_or_outer_module();
         let current_module_borrow = current_module.borrow();
-        let outer_current_module = self.outer_current_module();
-        let outer_current_module_borrow = outer_current_module.as_ref().map(|module| module.borrow());
 
         let module;
         let extending;
 
         if let Some(existing) = current_module_borrow.sub_modules.iter()
-            .chain(outer_current_module_borrow.iter().flat_map(|module| module.sub_modules.iter()))
             .find(|module| *module.borrow().name == *name.source()) {
             module = Rc::clone(existing);
             drop(current_module_borrow);
@@ -233,7 +221,7 @@ impl Compiler {
 
             current_module_borrow.imported_sub_modules.append(&mut compiler.top_level_module.borrow_mut().sub_modules);
             current_module_borrow.imported_templates.append(&mut compiler.top_level_module.borrow_mut().templates);
-            current_module_borrow.imported_exports.append(&mut compiler.top_level_module.borrow_mut().exports);
+            current_module_borrow.exports.append(&mut compiler.top_level_module.borrow_mut().exports);
         }
     }
 
@@ -765,9 +753,12 @@ impl Compiler {
         self.current_module.last().map(|module| Rc::clone(&module)).unwrap_or_else(|| Rc::clone(&self.top_level_module))
     }
 
-    fn outer_current_module(&self) -> Option<Rc<RefCell<Module>>> {
-        self.outer_current_module.as_ref().and_then(|modules| modules.last().map(|module| Rc::clone(&module)))
-            .or_else(|| self.outer_top_level_module.as_ref().map(|module| Rc::clone(&module)))
+    fn current_or_outer_module(&self) -> Rc<RefCell<Module>> {
+        self.current_module.last().map(|module| Rc::clone(&module))
+            .or_else(|| self.outer_current_module.as_ref()
+                .and_then(|modules| modules.last().map(Rc::clone))
+                .or_else(|| self.outer_top_level_module.as_ref().map(Rc::clone)))
+            .unwrap_or_else(|| Rc::clone(&self.top_level_module))
     }
 
     // Error handling

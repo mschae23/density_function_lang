@@ -193,7 +193,7 @@ module df {
 
     template lerp(delta, start, end) {
         if (start.type == builtin.type.int || start.type == builtin.type.float) {
-            impl.lerp_const(delta, start, end)
+            impl.lerp_const_start(delta, start, end)
         } else {
             start * (cache_once(delta) * -1.0 + 1.0)
                 + end * cache_once(delta)
@@ -223,8 +223,12 @@ module df {
     }
 
     module impl {
-        template lerp_const(delta, start, end) { // Requires start to be a constant number
+        template lerp_const_start(delta, start, end) { // Requires start to be a constant number
+            // if (start == 0.0) {
+            //     delta * end
+            // } else {
             start + delta * (builtin.static(-start) + end)
+            // }
         }
     }
 }
