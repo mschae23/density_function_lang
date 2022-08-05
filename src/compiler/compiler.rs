@@ -67,7 +67,8 @@ impl Compiler {
     }
 
     fn collect_exports_impl(outputs: &mut Vec<Rc<RefCell<ExportFunction>>>, module: Rc<RefCell<Module>>, target_dir: &Path) {
-        outputs.extend(module.borrow().exports.iter().map(|export| {
+        outputs.extend(module.borrow().exports.iter()
+            .map(|export| {
             let export_borrow = export.borrow();
             let mut target_path = target_dir.to_owned();
             target_path.push(&export_borrow.name);
@@ -84,11 +85,12 @@ impl Compiler {
 
         let mut path = target_dir.to_owned();
 
-        for sub_module in &module_borrow.sub_modules {
+        for sub_module in module_borrow.sub_modules.iter().chain(module_borrow.imported_sub_modules.iter()) {
             path.push(&sub_module.borrow().name);
             Self::collect_exports_impl(outputs, Rc::clone(sub_module), &path);
             path.pop();
         }
+
     }
 
     fn compile_declaration(&mut self, decl: Decl) {
@@ -173,11 +175,8 @@ impl Compiler {
         }
 
         let module = self.current_module.pop().expect("Internal compiler error: Missing module");
-        let mut module_borrow = module.borrow_mut();
-        module_borrow.imported_sub_modules.clear();
-        module_borrow.imported_templates.clear();
-        module_borrow.imported_exports.clear();
-        drop(module_borrow);
+        // let mut module_borrow = module.borrow_mut();
+        // drop(module_borrow);
 
         if !extending {
             self.current_module().borrow_mut().sub_modules.push(module);
@@ -234,7 +233,7 @@ impl Compiler {
                 &self.current_module[module_index as usize]
             } else { &self.top_level_module });
 
-            match Self::find_submodule(&module, &path[0]) {
+            match Self::find_submodule(&module, &path[0], true) {
                 Some(sub_module) => {
                     module = sub_module;
                     break;
@@ -251,7 +250,7 @@ impl Compiler {
         }
 
         for name in path.iter().skip(1) {
-            match Self::find_submodule(&module, name) {
+            match Self::find_submodule(&module, name, false) {
                 Some(sub_module) => {
                     module = sub_module;
                 },
@@ -265,7 +264,7 @@ impl Compiler {
         let current_module = self.current_module();
         let mut current_module_borrow = current_module.borrow_mut();
 
-        for template in module.borrow().templates.iter().chain(module.borrow().imported_templates.iter()) {
+        for template in module.borrow().templates.iter() {
             let template_name = &template.borrow().name;
             let template_arg_count = template.borrow().args.len();
             let mut allow = true;
@@ -291,7 +290,7 @@ impl Compiler {
             }
         }
 
-        for sub_module in module.borrow().sub_modules.iter().chain(module.borrow().imported_sub_modules.iter()) {
+        for sub_module in module.borrow().sub_modules.iter() {
             let sub_module_name = &sub_module.borrow().name;
             let mut allow = true;
 
@@ -317,8 +316,12 @@ impl Compiler {
         }
     }
 
-    fn find_submodule(module: &Rc<RefCell<Module>>, name: &Token) -> Option<Rc<RefCell<Module>>> {
-        for sub_module in module.borrow().sub_modules.iter().chain(module.borrow().imported_sub_modules.iter()) {
+    fn find_submodule(module: &Rc<RefCell<Module>>, name: &Token, include_imported: bool) -> Option<Rc<RefCell<Module>>> {
+        let empty = [];
+        let module_borrow = module.borrow();
+
+        for sub_module in module_borrow.sub_modules.iter().chain(
+            if include_imported { module_borrow.imported_sub_modules.iter() } else { empty.iter() }) {
             if sub_module.borrow().name == *name.source() {
                 return Some(Rc::clone(sub_module));
             }
@@ -717,19 +720,7 @@ impl Compiler {
                     }
                 }
 
-                for template in &module.borrow().imported_templates {
-                    if *template.borrow().name == *name.source() {
-                        return JsonElement::Template(Rc::clone(template));
-                    }
-                }
-
                 for sub_module in &module.borrow().sub_modules {
-                    if *sub_module.borrow().name == *name.source() {
-                        return JsonElement::Module(Rc::clone(sub_module));
-                    }
-                }
-
-                for sub_module in &module.borrow().imported_sub_modules {
                     if *sub_module.borrow().name == *name.source() {
                         return JsonElement::Module(Rc::clone(sub_module));
                     }
