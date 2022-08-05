@@ -116,12 +116,12 @@ module df {
     template shift_a(arg) { simple_1("minecraft:shift_a", arg) }
     template shift_b(arg) { simple_1("minecraft:shift_b", arg) }
 
-    template shifted_noise(shift_x, shift_y, shift_z, scale_xz, scale_y, noise) {
+    template shifted_noise(noise, shift_x, shift_y, shift_z, scale_xz, scale_y) {
         {
             "type": "minecraft:shifted_noise",
+            "noise": noise,
             "shift_x": shift_x, "shift_y": shift_y, "shift_z": shift_z,
-            "xz_scale": scale_xz, "y_scale": scale_y,
-            "noise": noise
+            "xz_scale": scale_xz, "y_scale": scale_y
         }
     }
 
@@ -220,6 +220,10 @@ module df {
                 input
             )
         )
+    }
+
+    template apply_surface_slides(input) {
+        apply_slides(input, -64, 384, 80, 64, -0.078125, 0, 24, 0.1171875)
     }
 
     module impl {

@@ -19,7 +19,9 @@ impl JsonWriter {
     pub fn write_element(&mut self, element: &JsonElement, out: &mut impl Write) -> Result<(), std::io::Error> {
         match element {
             JsonElement::ConstantFloat(value) =>
-                if *value as i32 as f64 == *value { write!(out, "{:.1}", value) } else { write!(out, "{:.}", value) },
+                if *value as i32 as f64 == *value { write!(out, "{:.1}", value) }
+                else if value.abs() > 1_000_000_000_000_f64 || value.abs() < 0.000_000_1 { write!(out, "{:E}", value) }
+                else { write!(out, "{:.}", value) },
             JsonElement::ConstantInt(value) => write!(out, "{}", value),
             JsonElement::ConstantBoolean(value) => write!(out, "{}", value),
             JsonElement::ConstantString(value) => write!(out, "\"{}\"", value),

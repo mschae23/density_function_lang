@@ -1,0 +1,286 @@
+include "../df/minecraft.densityfunction";
+import df.{apply_surface_slides, apply_blend_density, cache_2d, interpolated, noise, shifted_noise, abs, min, max, clamp, quarter_negative, range_choice, +, *};
+
+include "materialrules.noisesettings";
+import material_rules.*;
+
+template initial_density(factor, depth) {
+    4.0 * (depth * factor).quarter_negative()
+}
+
+template initial_density_without_jaggedness() {
+    apply_surface_slides(
+        clamp(-0.703125 + initial_density(cache_2d("minecraft:overworld/factor"), "minecraft:overworld/depth"), -64.0, 64.0)
+    )
+}
+
+template caves_function() {
+    max(
+        min(min(
+            4.0 * noise("minecraft:cave_layer", 1.0, 8.0) + clamp(0.27 + noise("minecraft:cave_cheese", 1.0, 0.6666666666666666), -1.0, 1.0)
+                + clamp(1.5 + -0.64 * "minecraft:overworld/sloped_cheese", 0.0, 0.5),
+            "minecraft:overworld/caves/entrances"
+        ), "minecraft:overworld/caves/spaghetti_2d" + "minecraft:overworld/caves/spaghetti_roughness_function"),
+        range_choice("minecraft:overworld/caves/pillars", -1000000.0, 0.03, -1000000.0, "minecraft:overworld/caves/pillars")
+    )
+}
+
+template final_density() {
+    min(apply_blend_density(apply_surface_slides(
+        range_choice("minecraft:overworld/sloped_cheese", -1000000.0, 1.5625, min(
+            "minecraft:overworld/sloped_cheese", 5.0 * "minecraft:overworld/caves/entrances"
+        ), caves_function())
+    )), "minecraft:overworld/caves/noodle")
+}
+
+template surface_noise_threshold(min) {
+    noise_threshold("minecraft:surface", builtin.static(min / 8.25))
+}
+
+template special_biome_blocks() { sequence([
+    condition(biome("minecraft:stony_peaks"), sequence([
+        condition(noise_threshold("minecraft:calcite", -0.0125, 0.0125), block("minecraft:calcite")),
+        block("minecraft:stone")
+    ])),
+    condition(biome("minecraft:stony_shore"), sequence([
+        condition(noise_threshold("minecraft:gravel", -0.05, 0.05), sequence([
+            condition(stone_depth_ceiling(), block("minecraft:stone")),
+            block("minecraft:gravel")
+        ])),
+        block("minecraft:stone")
+    ])),
+    condition(biome("minecraft:windswept_hills"), condition(surface_noise_threshold(1.0), block("minecraft:stone"))),
+    condition(biome(["minecraft:warm_ocean", "minecraft:beach", "minecraft:snowy_beach"]), sequence([
+        condition(stone_depth_ceiling(), block("minecraft:sandstone")),
+        block("minecraft:sand")
+    ])),
+    condition(biome("minecraft:desert"), sequence([
+        condition(stone_depth_ceiling(), block("minecraft:sandstone")),
+        block("minecraft:sand")
+    ])),
+    condition(biome("minecraft:dripstone_caves"), block("minecraft:stone"))
+]) }
+
+export overworld = {
+    "aquifers_enabled": true,
+    "default_block": {
+      "Name": "minecraft:stone"
+    },
+    "default_fluid": {
+      "Name": "minecraft:water",
+      "Properties": {
+        "level": "0"
+      }
+    },
+    "disable_mob_generation": false,
+    "legacy_random_source": false,
+    "noise": {
+      "height": 384,
+      "min_y": -64,
+      "size_horizontal": 1,
+      "size_vertical": 2
+    },
+    "noise_router": {
+      "barrier": noise("minecraft:aquifer_barrier", 1.0, 0.5),
+      "continents": "minecraft:overworld/continents",
+      "depth": "minecraft:overworld/depth",
+      "erosion": "minecraft:overworld/erosion",
+      "final_density": final_density(),
+      "fluid_level_floodedness": noise("minecraft:aquifer_fluid_level_floodedness", 1.0, 0.67),
+      "fluid_level_spread": noise("minecraft:aquifer_fluid_level_spread", 1.0, 0.7142857142857143),
+      "initial_density_without_jaggedness": initial_density_without_jaggedness(),
+      "lava": noise("minecraft:aquifer_lava", 1.0, 1.0),
+      "ridges": "minecraft:overworld/ridges",
+      "temperature": shifted_noise("minecraft:temperature", "minecraft:shift_x", 0.0, "minecraft:shift_z", 0.25, 0.0),
+      "vegetation": shifted_noise("minecraft:vegetation", "minecraft:shift_x", 0.0, "minecraft:shift_z", 0.25, 0.0),
+      "vein_gap": noise("minecraft:ore_gap", 1.0, 1.0),
+      "vein_ridged": -0.07999999821186066 + max(
+          abs(range_choice("minecraft:y", -60.0, 51.0, noise("minecraft:ore_vein_a", 4.0, 4.0), 0.0).interpolated()),
+          abs(range_choice("minecraft:y", -60.0, 51.0, noise("minecraft:ore_vein_b", 4.0, 4.0), 0.0).interpolated())
+      ),
+      "vein_toggle": range_choice("minecraft:y", -60.0, 51.0, noise("minecraft:ore_veininess", 1.5, 1.5), 0.0).interpolated()
+    },
+    "ore_veins_enabled": true,
+    "sea_level": 63,
+    "spawn_target": [
+        {
+            "continentalness": [-0.11, 1.0],
+            "depth": 0.0,
+            "erosion": [-1.0, 1.0],
+            "humidity": [-1.0, 1.0],
+            "offset": 0.0,
+            "temperature": [-1.0, 1.0],
+            "weirdness": [-1.0, -0.16]
+        },
+        {
+            "continentalness": [-0.11, 1.0 ],
+            "depth": 0.0,
+            "erosion": [-1.0, 1.0],
+            "humidity": [-1.0, 1.0],
+            "offset": 0.0,
+            "temperature": [-1.0, 1.0],
+            "weirdness": [0.16, 1.0]
+        }
+    ],
+    "surface_rule": sequence([
+        condition(vertical_gradient("minecraft:bedrock_floor", above_bottom(0), above_bottom(5)), block("minecraft:bedrock")),
+
+        condition(above_preliminary_surface(), sequence([
+            condition(stone_depth_floor(), sequence([
+                condition(biome("minecraft:wooded_badlands"), condition(above_y(absolute(97), 2, false), sequence([
+                    condition(noise_threshold("minecraft:surface", -0.909, -0.5454), block("minecraft:coarse_dirt")),
+                    condition(noise_threshold("minecraft:surface", -0.1818, 0.1818), block("minecraft:coarse_dirt")),
+                    condition(noise_threshold("minecraft:surface", 0.5454, 0.909), block("minecraft:coarse_dirt")),
+                    sequence([
+                        condition(water(0, 0, false), block("minecraft:grass_block", { "snowy": false })),
+                        block("minecraft:dirt")
+                    ])
+                ]))),
+                condition(biome("minecraft:swamp"), condition(above_y(absolute(62), 0), condition(not(above_y(63, 0)),
+                    condition(noise_threshold("minecraft:surface_swamp", 0.0), block("minecraft:water", { "level": "0" }))))),
+                condition(biome("minecraft:mangrove_swamp"), condition(above_y(absolute(60), 0), condition(not(above_y(63, 0)),
+                    condition(noise_threshold("minecraft:surface_swamp", 0.0), block("minecraft:water", { "level": "0" })))))
+            ])),
+            condition(biome(["minecraft:badlands", "minecraft:eroded_badlands", "minecraft:wooded_badlands"]), sequence([
+                condition(stone_depth_floor(), sequence([
+                    condition(above_y(absolute(256), 0), block("minecraft:orange_terracotta")),
+                    condition(above_y(absolute(74), 1), sequence([
+                        condition(noise_threshold("minecraft:surface", -0.909, -0.5454), block("minecraft:terracotta")),
+                        condition(noise_threshold("minecraft:surface", -0.1818, 0.1818), block("minecraft:terracotta")),
+                        condition(noise_threshold("minecraft:surface", 0.5454, 0.909), block("minecraft:terracotta")),
+                        bandlands()
+                    ])),
+                    condition(water(-1, 0), sequence([
+                        condition(stone_depth_ceiling(), block("minecraft:red_sandstone")),
+                        block("minecraft:red_sand")
+                    ])),
+                    condition(not(hole()), block("minecraft:orange_terracotta")),
+                    condition(water(-6, -1, true), block("minecraft:white_terracotta")),
+                    sequence([
+                        condition(stone_depth_ceiling(), block("minecraft:stone")),
+                        block("minecraft:gravel")
+                    ])
+                ])),
+                condition(above_y(absolute(63), -1, true), sequence([
+                    above_y(absolute(63), 0), block("minecraft:orange_terracotta"),
+                    bandlands()
+                ])),
+                condition(stone_depth(0, true, 0, "floor"), condition(water(-6, -1, true), block("minecraft:white_terracotta")))
+            ])),
+            condition(stone_depth_floor(), condition(water(-1, 0), sequence([
+                condition(biome(["minecraft:frozen_ocean", "minecraft:deep_frozen_ocean"]), condition(hole(), sequence([
+                    condition(water(0, 0), block("minecraft:air")),
+                    condition(temperature(), block("minecraft:ice")),
+                    block("minecraft:water")
+                ]))),
+                sequence([
+                    condition(biome("minecraft:frozen_peaks"), sequence([
+                        condition(steep(), block("minecraft:packed_ice")),
+                        condition(noise_threshold("minecraft:packed_ice", 0.0, 0.2), block("minecraft:packed_ice")),
+                        condition(noise_threshold("minecraft:ice", 0.0, 0.025), block("minecraft:ice")),
+                        condition(water(0, 0), block("minecraft:snow_block"))
+                    ])),
+                    condition(biome("minecraft:snowy_slopes"), sequence([
+                        condition(steep(), block("minecraft:stone")),
+                        condition(noise_threshold("minecraft:powder_snow", 0.35, 0.6), condition(water(0, 0), block("minecraft:powder_snow"))),
+                        condition(water(0, 0), block("minecraft:snow_block"))
+                    ])),
+                    condition(biome("minecraft:jagged_peaks"), sequence([
+                        condition(steep(), block("minecraft:stone")),
+                        condition(water(0, 0), block("minecraft:snow_block"))
+                    ])),
+                    condition(biome("minecraft:grove"), sequence([
+                        condition(noise_threshold("minecraft:powder_snow", 0.35, 0.6), condition(water(0, 0), block("minecraft:powder_snow"))),
+                        condition(water(0, 0), block("minecraft:snow_block"))
+                    ])),
+                    special_biome_blocks(),
+                    condition(biome("minecraft:windswept_savanna"), sequence([
+                        condition(surface_noise_threshold(1.75), block("minecraft:stone")),
+                        condition(surface_noise_threshold(-0.5), block("minecraft:coarse_dirt"))
+                    ])),
+                    condition(biome("minecraft:windswept_gravelly_hills"), sequence([
+                        condition(surface_noise_threshold(2.0), sequence([
+                            condition(stone_depth_ceiling(), block("minecraft:stone")),
+                            block("minecraft:gravel")
+                        ])),
+                        condition(surface_noise_threshold(1.0), block("minecraft:stone")),
+                        condition(surface_noise_threshold(-1.0), sequence([
+                            condition(water(0, 0), block("minecraft:grass_block")),
+                            block("minecraft:dirt")
+                        ])),
+                        sequence([
+                            condition(stone_depth_ceiling(), block("minecraft:stone")),
+                            block("minecraft:gravel")
+                        ])
+                    ])),
+                    condition(biome(["minecraft:old_growth_pine_taiga", "minecraft:old_growth_spruce_taiga"]), sequence([
+                        condition(surface_noise_threshold(1.75), block("minecraft:coarse_dirt")),
+                        condition(surface_noise_threshold(-0.95), block("minecraft:podzol")),
+                    ])),
+                    condition(biome("minecraft:ice_spikes"), condition(water(0, 0), block("minecraft:snow_block"))),
+                    condition(biome("minecraft:mangrove_swamp"), block("minecraft:mud")),
+                    condition(biome("minecraft:mushroom_fields"), block("minecraft:mycelium")),
+                    sequence([
+                        condition(water(0, 0), block("minecraft:grass_block")),
+                        block("minecraft:dirt")
+                    ])
+                ])
+            ]))),
+            condition(water(-6, -1, true), sequence([
+                condition(stone_depth_floor(), condition(biome(["minecraft:frozen_ocean", "minecraft:deep_frozen_ocean"]),
+                    condition(hole(), block("minecraft:water")))),
+                condition(stone_depth(0, true, 0, "floor"), sequence([
+                    condition(biome("minecraft:frozen_peaks"), sequence([
+                        condition(steep(), block("minecraft:packed_ice")),
+                        condition(noise_threshold("minecraft:packed_ice", -0.5, 0.2), block("minecraft:packed_ice")),
+                        condition(noise_threshold("minecraft:ice", -0.0625, 0.025), block("minecraft:ice")),
+                        condition(water(0, 0), block("minecraft:snow_block"))
+                    ])),
+                    condition(biome("minecraft:snowy_slopes"), sequence([
+                        condition(steep(), block("minecraft:stone")),
+                        condition(noise_threshold("minecraft:powder_snow", 0.45, 0.58), condition(water(0, 0), block("minecraft:powder_snow"))),
+                        condition(water(0, 0), block("minecraft:snow_block"))
+                    ])),
+                    condition(biome("minecraft:jagged_peaks"), block("minecraft:stone")),
+                    condition(biome("minecraft:grove"), sequence([
+                        condition(noise_threshold("minecraft:powder_snow", 0.45, 0.58), condition(water(0, 0), block("minecraft:powder_snow"))),
+                        block("minecraft:dirt")
+                    ])),
+                    special_biome_blocks(),
+                    condition(biome("minecraft:windswept_savanna"), condition(surface_noise_threshold(1.75), block("minecraft:stone"))),
+                    condition(biome("minecraft:windswept_gravelly_hills"), sequence([
+                        condition(surface_noise_threshold(2.0), sequence([
+                            condition(stone_depth_ceiling(), block("minecraft:stone")),
+                            block("minecraft:gravel")
+                        ])),
+                        condition(surface_noise_threshold(1.0), block("minecraft:stone")),
+                        condition(surface_noise_threshold(-1.0), block("minecraft:dirt")),
+                        sequence([
+                            condition(stone_depth_ceiling(), block("minecraft:stone")),
+                            block("minecraft:gravel")
+                        ])
+                    ])),
+                    condition(biome("minecraft:mangrove_swamp"), block("minecraft:mud")),
+                    block("minecraft:dirt")
+                ])),
+                condition(biome(["minecraft:warm_ocean", "minecraft:beach", "minecraft:snowy_beach"]),
+                    condition(stone_depth(0, true, 6, "floor"), block("minecraft:sandstone"))),
+                condition(biome("minecraft:desert"),
+                    condition(stone_depth(0, true, 30, "floor"), block("minecraft:sandstone")))
+            ])),
+            condition(stone_depth_floor(), sequence([
+                condition(biome(["minecraft:frozen_peaks", "minecraft:jagged_peaks"]), block("minecraft:stone")),
+                condition(biome(["minecraft:warm_ocean", "minecraft:lukewarm_ocean", "minecraft:deep_lukewarm_ocean"]), sequence([
+                    condition(stone_depth_ceiling(), block("minecraft:sandstone")),
+                    block("minecraft:sand")
+                ])),
+                sequence([
+                    condition(stone_depth_ceiling(), block("minecraft:stone")),
+                    block("minecraft:gravel")
+                ])
+            ]))
+        ])),
+
+        condition(vertical_gradient("minecraft:deepslate", absolute(0), absolute(8)), block("minecraft:deepslate", { "axis": "y" }))
+    ])
+};

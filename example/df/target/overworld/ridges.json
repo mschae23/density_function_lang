@@ -1,0 +1,12 @@
+{
+    "type": "minecraft:flat_cache",
+    "argument": {
+        "type": "minecraft:shifted_noise",
+        "noise": "minecraft:shift_x",
+        "shift_x": 0.0,
+        "shift_y": "minecraft:shift_z",
+        "shift_z": 0.25,
+        "xz_scale": 0.0,
+        "y_scale": "minecraft:ridge"
+    }
+}

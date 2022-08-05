@@ -9,9 +9,9 @@ export zero = 0.0;
 module overworld {
     export base_3d_noise = old_blended_noise(0.25, 0.125, 80.0, 160.0, 8.0);
 
-    export continents = flat_cache(shifted_noise("minecraft:shift_x", 0.0, "minecraft:shift_z", 0.25, 0.0, "minecraft:continentalness"));
+    export continents = flat_cache(shifted_noise("minecraft:continentalness", "minecraft:shift_x", 0.0, "minecraft:shift_z", 0.25, 0.0));
     export depth = y_clamped_gradient(-64, 320, 1.5, -1.5) + "minecraft:overworld/offset";
-    export erosion = flat_cache(shifted_noise("minecraft:shift_x", 0.0, "minecraft:shift_z", 0.25, 0.0, "minecraft:erosion"));
+    export erosion = flat_cache(shifted_noise("minecraft:erosion", "minecraft:shift_x", 0.0, "minecraft:shift_z", 0.25, 0.0));
 
     include "offset_factor_jaggedness.densityfunction";
 
@@ -31,10 +31,6 @@ module overworld {
             ), "minecraft:overworld/caves/spaghetti_2d" + "minecraft:overworld/caves/spaghetti_roughness_function"),
             range_choice("minecraft:overworld/caves/pillars", -1000000.0, 0.03, -1000000.0, "minecraft:overworld/caves/pillars")
         )
-    }
-
-    template apply_surface_slides(input) {
-        apply_slides(input, -64, 384, 80, 64, -0.078125, 0, 24, 0.1171875)
     }
 
     template initial_density(factor, depth) {

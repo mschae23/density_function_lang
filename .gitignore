@@ -6,4 +6,4 @@ target/
 *.iml
 
 # Compiler test
-!test/target/
+!example/**/target/

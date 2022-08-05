@@ -1,0 +1,89 @@
+module material_rules {
+    template simple_0(type) { { "type": type } }
+
+    // Material rules
+    template bandlands() { simple_0("minecraft:bandlands") }
+
+    template block(block) { { "type": "minecraft:block", "result_state": { "Name": block } } }
+    template block(block, properties) { { "type": "minecraft:block", "result_state": { "Name": block, "Properties": properties } } }
+
+    template sequence(sequence) { { "type": "minecraft:sequence", "sequence": sequence } }
+
+    template condition(condition, then) { { "type": "minecraft:condition", "if_true": condition, "then_run": then } }
+
+    // Material conditions
+    template biome(biome) { { "type": "minecraft:biome", "biome_is": biome } }
+
+    template noise_threshold(noise, min, max) { { "type": "minecraft:noise_threshold", "noise": noise, "min_threshold": min, "max_threshold": max } }
+
+    template vertical_gradient(random, true_at_and_below, false_at_and_above) { { "type": "minecraft:vertical_gradient",
+        "random_name": random,
+        "true_at_and_below": true_at_and_below, "false_at_and_above": false_at_and_above
+    } }
+
+    template above_y(anchor, surface_depth_multiplier, add_stone_depth) {
+        validate.surface_depth_multiplier(surface_depth_multiplier);
+
+        {
+            "type": "minecraft:y_above",
+            "anchor": anchor,
+            "surface_depth_multiplier": surface_depth_multiplier,
+            "add_stone_depth": add_stone_depth
+        }
+    }
+
+    template water(offset, surface_depth_multiplier, add_stone_depth) {
+        validate.surface_depth_multiplier(surface_depth_multiplier);
+
+        {
+            "type": "minecraft:water",
+            "offset": offset,
+            "surface_depth_multiplier": surface_depth_multiplier,
+            "add_stone_depth": add_stone_depth
+        }
+    }
+
+    template temperature() { simple_0("minecraft:temperature") }
+    template steep() { simple_0("minecraft:steep") }
+
+    template not(invert) { { "type": "minecraft:not", "invert": invert } }
+
+    template hole() { simple_0("minecraft:hole") }
+
+    template above_preliminary_surface() { simple_0("above_preliminary_surface") }
+
+    template stone_depth(offset, add_surface_depth, secondary_depth_range, surface_type) { { "type": "minecraft:stone_depth",
+            "offset": offset,
+            "add_surface_depth": add_surface_depth,
+            "secondary_depth_range": secondary_depth_range,
+            "surface_type": surface_type
+    } }
+
+    // Vertical anchors
+    template above_bottom(offset) { { "above_bottom": offset } }
+    template below_top(offset) { { "below_top": offset } }
+    template absolute(y) { { "absolute": y } }
+
+    // Shortcuts
+    template stone_depth_floor() { stone_depth(0, false, 0, "floor") }
+    template stone_depth_ceiling() { stone_depth(0, false, 0, "ceiling") }
+
+    template noise_threshold(noise, min) { noise_threshold(noise, min, 1.7976931348623157E308) }
+
+    template above_y(anchor, surface_depth_multiplier) { above_y(anchor, surface_depth_multiplier, false) }
+    template above_y(anchor) { above_y(anchor, 0, false) }
+
+    template water(offset, surface_depth_multiplier) { water(offset, surface_depth_multiplier, false) }
+
+    module validate {
+        template surface_depth_multiplier(input) {
+            if (input.type != builtin.type.int) {
+                builtin.error("Validation failed: Input is not an int", input);
+                false
+            } else if (input < -20 || input > 20) {
+                builtin.error("Validation failed: Number out of bounds", input);
+                false
+            } else true
+        }
+    }
+}
