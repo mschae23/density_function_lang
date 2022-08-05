@@ -7,4 +7,4 @@ density_function_lang.exe main.densityfunction --target-dir target
 ```
 
 ## Examples
-See [test/main.densityfunction](example/df/main.densityfunction).
+See [example/df/main.densityfunction](example/df/main.densityfunction).
