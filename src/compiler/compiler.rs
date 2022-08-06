@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use crate::compiler::ast::{Expr, JsonElement, Module, ExportFunction, Decl, Template, TemplateExpr, JsonElementType, CompiledExport};
 use crate::compiler::lexer::{Token, TokenPos};
+use crate::Config;
 
 struct TemplateScope {
     pub args: Vec<(String, JsonElement)>,
@@ -17,6 +18,8 @@ struct TemplateCall {
     pub path: Rc<RefCell<PathBuf>>,
     pub line: i32,
     pub column: i32,
+
+    pub tailrec_index: u32,
 }
 
 pub struct Compiler {
@@ -31,11 +34,11 @@ pub struct Compiler {
     path: Rc<RefCell<PathBuf>>, target_dir: PathBuf,
 
     had_error: bool, panic_mode: bool,
-    verbose: bool,
+    config: Rc<Config>,
 }
 
 impl Compiler {
-    pub fn new(path: PathBuf, target_dir: PathBuf, verbose: bool) -> Compiler {
+    pub fn new(path: PathBuf, target_dir: PathBuf, config: Rc<Config>) -> Compiler {
         Compiler {
             current_module: vec![],
             top_level_module: Rc::new(RefCell::new(Module { name: String::from("<top-level>"),
@@ -50,7 +53,7 @@ impl Compiler {
             path: Rc::new(RefCell::new(path)), target_dir,
 
             had_error: false, panic_mode: false,
-            verbose,
+            config,
         }
     }
 
@@ -205,7 +208,7 @@ impl Compiler {
                 }
             };
 
-            let mut compiler = Compiler::new(path, self.target_dir.to_owned(), self.verbose);
+            let mut compiler = Compiler::new(path, self.target_dir.to_owned(), Rc::clone(&self.config));
             compiler.outer_top_level_module = Some(Rc::clone(&self.top_level_module));
             compiler.outer_current_module = Some(self.current_module.iter().map(|module| Rc::clone(module)).collect());
             compiler.compile(declarations);
@@ -366,6 +369,13 @@ impl Compiler {
                 let compiled_receiver = self.compile_expr(*receiver, static_expr);
                 self.evaluate_member(compiled_receiver, name, static_expr)
             },
+            Expr::Index { receiver, operator, index } => {
+                let compiled_receiver = self.compile_expr(*receiver, static_expr);
+                let compiled_index = self.compile_expr(*index, static_expr);
+
+                let pos = *operator.start();
+                self.evaluate_template(Expr::Identifier(operator), pos, vec![compiled_receiver, compiled_index], static_expr)
+            },
             Expr::BuiltinFunctionCall { name, args } => {
                 self.evaluate_builtin_call(name, args, static_expr)
             },
@@ -380,19 +390,19 @@ impl Compiler {
         }
     }
 
-    fn evaluate_template(&mut self, callee: Expr, token_pos: TokenPos, args: Vec<JsonElement>, static_expr: bool) -> JsonElement {
+    fn begin_evaluate_template(&mut self, callee: Expr, token_pos: TokenPos, args: &Vec<JsonElement>, static_expr: bool) -> Result<(Option<JsonElement>, Rc<RefCell<Template>>), JsonElement> {
         let (receiver, name) = match callee {
             Expr::Member { receiver, name} => (Some(self.compile_expr(*receiver, static_expr)), name),
             Expr::Identifier(name) => (None, name),
             _ => {
                 self.error_at(token_pos, "Cannot call non-identifier expression", true);
-                return JsonElement::Error;
+                return Err(JsonElement::Error);
             },
         };
 
         if static_expr {
             if let Some(result) = self.evaluate_static_operator(&name, &args) {
-                return result;
+                return Err(result);
             }
         }
 
@@ -400,9 +410,14 @@ impl Compiler {
             Some(template) => template,
             None => {
                 self.error_at(*name.start(), &format!("Unresolved function call: {}", name.source()), false);
-                return JsonElement::Error;
+                return Err(JsonElement::Error);
             }
         };
+
+        Ok((receiver, template))
+    }
+
+    fn begin_compile_template(&mut self, template: Rc<RefCell<Template>>, receiver: Option<JsonElement>, token_pos: TokenPos, args: &Vec<JsonElement>) -> (TemplateExpr, Vec<Rc<RefCell<Module>>>, Rc<RefCell<PathBuf>>) {
         let template_borrow = template.borrow();
 
         let mut scope_args = vec![];
@@ -422,7 +437,7 @@ impl Compiler {
 
         self.template_scopes.push(TemplateScope { args: scope_args });
 
-        if self.verbose {
+        if self.config.verbose {
             self.template_call_stack.push(TemplateCall {
                 template: Rc::clone(&template),
                 name: template_borrow.name.to_owned(),
@@ -430,6 +445,7 @@ impl Compiler {
                 arg_count: template_borrow.args.len() as i32,
                 path: Rc::clone(&self.path),
                 line: token_pos.line, column: token_pos.column,
+                tailrec_index: 0,
             });
         }
 
@@ -443,12 +459,57 @@ impl Compiler {
         std::mem::swap(&mut self.current_module, &mut template_current_modules);
         std::mem::swap(&mut self.path, &mut template_file_path);
 
-        let expr = self.compile_template_expr(template_expr.clone(), static_expr);
-        if self.verbose { self.template_call_stack.pop(); }
+        (template_expr, template_current_modules, template_file_path)
+    }
+
+    fn begin_compile_tailrec_template(&mut self, template: Rc<RefCell<Template>>, receiver: Option<JsonElement>, args: &Vec<JsonElement>) -> TemplateExpr {
+        let template_borrow = template.borrow();
+
+        let mut scope_args = vec![];
+        // eprintln!("name: {}; template receiver: {}; provided receiver: {}; template args: {:?}; provided args: {:?}",
+        //     &template_borrow.name, template_borrow.receiver, receiver.is_some(), &template_borrow.args, &args);
+
+        if let Some(receiver) = receiver {
+            scope_args.push((String::from("this"), receiver));
+        }
+
+        for i in 0..template_borrow.args.len() {
+            let name = template_borrow.args[i].clone();
+            let element = args[i].clone();
+
+            scope_args.push((name, element));
+        }
+
+        *self.template_scopes.last_mut().expect("Internal compiler error: No template scope for tailrec template") =
+            TemplateScope { args: scope_args };
+
+        if self.config.verbose {
+            self.template_call_stack.last_mut().expect("Internal compiler error: No template call stack frame for tailrec template").tailrec_index += 1;
+        }
+
+        let template_expr = template_borrow.expr.clone();
+        drop(template_borrow);
+
+        template_expr
+    }
+
+    fn end_compile_template(&mut self, mut template_current_modules: Vec<Rc<RefCell<Module>>>, mut template_file_path: Rc<RefCell<PathBuf>>) {
+        if self.config.verbose { self.template_call_stack.pop(); }
         self.template_scopes.pop();
         std::mem::swap(&mut self.current_module, &mut template_current_modules);
         std::mem::swap(&mut self.path, &mut template_file_path);
+    }
 
+    fn evaluate_template(&mut self, callee: Expr, token_pos: TokenPos, args: Vec<JsonElement>, static_expr: bool) -> JsonElement {
+        let (receiver, template) = match self.begin_evaluate_template(callee, token_pos, &args, static_expr) {
+            Ok(result) => result,
+            Err(result) => return result,
+        };
+        let (template_expr, template_current_modules, template_file_path) = self.begin_compile_template(Rc::clone(&template), receiver, token_pos, &args);
+
+        let expr = self.compile_template_expr(template_expr.clone(), Some(template), static_expr);
+
+        self.end_compile_template(template_current_modules, template_file_path);
         expr
     }
 
@@ -545,6 +606,23 @@ impl Compiler {
 
                 "&&" => binary_logic_op!(args, &&),
                 "||" => binary_logic_op!(args, ||),
+
+                "[" => match &args[0] {
+                    JsonElement::Array(array) => match &args[1] {
+                        JsonElement::ConstantInt(index) => {
+                            if *index < 0 || *index as usize > array.len() {
+                                self.error_at_with_context(*name.start(), "Array index out of bounds", vec![
+                                    ("Length", JsonElement::ConstantInt(array.len() as i32)),
+                                    ("Index", JsonElement::ConstantInt(*index))
+                                ], false)
+                            }
+
+                            return Some(array[*index as usize].clone())
+                        },
+                        _ => {},
+                    },
+                    _ => {},
+                },
                 _ => {},
             }
         }
@@ -559,29 +637,61 @@ impl Compiler {
         ], false);
     }
 
-    fn compile_template_expr(&mut self, expr: TemplateExpr, static_expr: bool) -> JsonElement {
-        match expr {
-            TemplateExpr::Block { expressions, last } => {
-                for expr in expressions {
-                    self.compile_template_expr(expr, static_expr);
-                }
+    fn compile_template_expr(&mut self, mut expr: TemplateExpr, template: Option<Rc<RefCell<Template>>>, static_expr: bool) -> JsonElement {
+        loop {
+            match expr {
+                TemplateExpr::Block { expressions, last } => {
+                    for expr in expressions {
+                        self.compile_template_expr(expr, None, static_expr);
+                    }
 
-                self.compile_template_expr(*last, static_expr)
-            },
-            TemplateExpr::If { token, condition, then, otherwise } => {
-                let compiled_condition = self.compile_expr(condition, true);
+                    expr = *last;
+                    // self.compile_template_expr(*last, static_expr)
+                },
+                TemplateExpr::If { token, condition, then, otherwise } => {
+                    let compiled_condition = self.compile_expr(condition, true);
 
-                match compiled_condition {
-                    JsonElement::ConstantBoolean(value) =>
-                        self.compile_template_expr(if value { *then } else { *otherwise }, static_expr),
-                    element => {
-                        self.error_at_with_context(*token.end(), "Condition of 'if' expression must be a boolean value",
-                            vec![("Context", element)], true);
-                        JsonElement::Error
-                    },
+                    match compiled_condition {
+                        JsonElement::ConstantBoolean(value) => {
+                            expr = if value { *then } else { *otherwise };
+                            // self.compile_template_expr(if value { *then } else { *otherwise }, static_expr)
+                        },
+                        element => {
+                            self.error_at_with_context(*token.end(), "Condition of 'if' expression must be a boolean value",
+                                vec![("Context", element)], true);
+                            return JsonElement::Error;
+                        },
+                    }
+                },
+                TemplateExpr::Simple(simple_expr) => {
+                    if let Some(outer_template) = &template {
+                        match simple_expr {
+                            Expr::FunctionCall { callee, token, args } => {
+                                let compiled_args = args.into_iter().map(|arg| self.compile_expr(arg, static_expr)).collect();
+
+                                let (receiver, template) = match self.begin_evaluate_template(*callee, *token.start(), &compiled_args, static_expr) {
+                                    Ok(result) => result,
+                                    Err(result) => return result,
+                                };
+
+                                if &template == outer_template {
+                                    expr = self.begin_compile_tailrec_template(template, receiver, &compiled_args);
+                                    continue;
+                                } else {
+                                    let (template_expr, template_current_modules, template_file_path) = self.begin_compile_template(Rc::clone(&template), receiver, *token.start(), &compiled_args);
+                                    let expr = self.compile_template_expr(template_expr.clone(), Some(template), static_expr);
+
+                                    self.end_compile_template(template_current_modules, template_file_path);
+                                    return expr
+                                }
+                            },
+                            _ => return self.compile_expr(simple_expr, static_expr),
+                        }
+                    } else {
+                        return self.compile_expr(simple_expr, static_expr)
+                    }
                 }
-            },
-            TemplateExpr::Simple(expr) => self.compile_expr(expr, static_expr),
+            }
         }
     }
 
@@ -589,6 +699,14 @@ impl Compiler {
         if let Some(receiver) = receiver {
             match receiver {
                 JsonElement::Module(module) => return Self::find_template_on(module, name, false, arg_count),
+                _ => {},
+            }
+        }
+
+        if let Some((_, arg)) = self.template_scopes.last().and_then(|scope| scope.args.iter()
+            .find(|(arg_name, _)| arg_name == name.source())) {
+            match arg {
+                JsonElement::Template(template) => return Some(Rc::clone(template)),
                 _ => {},
             }
         }
@@ -732,6 +850,22 @@ impl Compiler {
             receiver => {
                 if static_expr && name.source() == "type" {
                     return JsonElement::Type(JsonElementType::from(receiver));
+                } else if static_expr && name.source() == "length" {
+                    match receiver {
+                        JsonElement::Array(array) => return JsonElement::ConstantInt(array.len() as i32),
+                        _ => {},
+                    }
+                }
+
+                if static_expr {
+                    match receiver {
+                        JsonElement::Object(fields) => {
+                            if let Some((_, field)) = fields.iter().find(|(key, _)| name.source() == key) {
+                                return field.clone();
+                            }
+                        },
+                        _ => {},
+                    }
                 }
 
                 self.error_at(*name.start(), "Tried to get a member of non-module value", true);
@@ -775,11 +909,11 @@ impl Compiler {
             eprintln!("    {}: {:?}", *name, context_element);
         }
 
-        if self.verbose && !context.is_empty() && !self.template_call_stack.is_empty() {
+        if self.config.verbose && !context.is_empty() && !self.template_call_stack.is_empty() {
             eprintln!();
         }
 
-        if self.verbose {
+        if self.config.verbose {
             for template_call in self.template_call_stack.iter().rev() {
                 let mut args = vec![];
 
@@ -802,6 +936,14 @@ impl Compiler {
                             Some(acc)
                         } else { None }
                     } else { None }).unwrap_or_else(|| String::new());
+
+                if template_call.tailrec_index > 0 {
+                    if template_call.tailrec_index == 1 {
+                        eprint!("    ... 1 tail recursion call\n");
+                    } else {
+                        eprint!("    ... {} tail recursion calls\n", template_call.tailrec_index);
+                    }
+                }
 
                 eprintln!("    at [{}:{}:{}] {}{}({})", template_call.path.borrow().to_string_lossy(),
                     template_call.line, template_call.column, template_path, &template_call.name, args.join(", "));

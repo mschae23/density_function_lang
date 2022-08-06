@@ -22,6 +22,11 @@ pub struct Config {
 
     #[clap(short, long, help = "Print verbose log output")]
     pub verbose: bool,
+
+    #[clap(long, help = "Disable pretty printing")]
+    pub no_pretty_print: bool,
+    #[clap(long, default_value = "    ", help = "Indentation string for pretty printing")]
+    pub indentation: String,
 }
 
 pub fn parse(path: &Path) -> Result<Option<Vec<Decl>>, std::io::Error> {
@@ -38,13 +43,13 @@ pub fn parse(path: &Path) -> Result<Option<Vec<Decl>>, std::io::Error> {
     Ok(Some(statements))
 }
 
-pub fn compile(path: PathBuf, target_dir: PathBuf, verbose: bool) -> Result<Option<(Vec<Rc<RefCell<ExportFunction>>>, Compiler)>, std::io::Error> {
+pub fn compile(path: PathBuf, target_dir: PathBuf, config: Rc<Config>) -> Result<Option<(Vec<Rc<RefCell<ExportFunction>>>, Compiler)>, std::io::Error> {
     let statements = match parse(&path)? {
         Some(result) => result,
         None => return Ok(None),
     };
 
-    let mut compiler = Compiler::new(path.to_owned(), target_dir.to_owned(), verbose);
+    let mut compiler = Compiler::new(path.to_owned(), target_dir.to_owned(), config);
     compiler.compile(statements);
     let functions = compiler.collect_exports();
 
@@ -56,15 +61,15 @@ pub fn compile(path: PathBuf, target_dir: PathBuf, verbose: bool) -> Result<Opti
 }
 
 pub fn run() -> Result<(), std::io::Error> {
-    let config: Config = Config::parse();
+    let config: Rc<Config> = Rc::new(Config::parse());
 
-    let (functions, _) = match compile(config.input.to_owned(), config.target_dir.to_owned(), config.verbose)? {
+    let (functions, _) = match compile(config.input.to_owned(), config.target_dir.to_owned(), Rc::clone(&config))? {
         Some(result) => result,
         None => return Err(std::io::Error::from(std::io::ErrorKind::InvalidData)),
     };
 
     std::fs::create_dir_all(&config.target_dir)?;
-    let mut writer = JsonWriter::new(String::from("    "), true);
+    let mut writer = JsonWriter::new(config.indentation.to_owned(), !config.no_pretty_print);
 
     for function in functions {
         let function = &*function.borrow();

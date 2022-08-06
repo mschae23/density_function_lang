@@ -1,0 +1,35 @@
+template loop_for_index(start, end, step, f) {
+    loop_for_index_impl(start, end, step, start, f, false)
+}
+
+template loop_for_index_impl(start, end, step, current, f, result) {
+    if (current == end || (start + step > start && current >= end) || (start + step < start && current <= end)) {
+        result
+    } else {
+        loop_for_index_impl(start, end, step, builtin.static(current + step), f, f(current))
+    }
+}
+
+template iteration(i) {
+    i // builtin.error("Iteration", i)
+}
+
+export loop_for_index_test = loop_for_index(0, 20, 1, iteration);
+
+template array_fold(array, start_acc, f) {
+    array_fold_impl(array, start_acc, f, 0)
+}
+
+template array_fold_impl(array, acc, f, index) {
+    if (index >= array.length)
+        acc
+    else {
+        array_fold_impl(array, f(acc, builtin.static(array[index])), f, builtin.static(index + 1))
+    }
+}
+
+template array_fold_iteration(acc, element) {
+    builtin.static(acc + element)
+}
+
+export array_fold_test = array_fold([7, 3, 5, 1, 2, 8, 10, 9, 6, 4], 0, array_fold_iteration);

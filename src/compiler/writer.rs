@@ -62,11 +62,11 @@ impl JsonWriter {
             let field_count = fields.len();
 
             for (i, (name, field)) in fields.into_iter().enumerate() {
-                write!(out, "\"{}\": ", name)?;
+                write!(out, "\"{}\":", name)?;
                 self.write_element(field, out)?;
 
                 if i < field_count - 1 {
-                    write!(out, ", ")?;
+                    write!(out, ",")?;
                 }
             }
 
@@ -106,7 +106,7 @@ impl JsonWriter {
                 self.write_element(element, out)?;
 
                 if i < field_count - 1 {
-                    write!(out, ", ")?;
+                    write!(out, ",")?;
                 }
             }
 

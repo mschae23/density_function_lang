@@ -6,7 +6,7 @@ use crate::compiler::lexer::{Lexer, LexerError, Token, TokenPos, TokenType};
 use crate::compiler::ast::{Expr, JsonElementType, Decl, TemplateExpr};
 
 lazy_static! {
-    static ref ALLOWED_TEMPLATE_NAME_TYPES: [TokenType; 15] = [
+    static ref ALLOWED_TEMPLATE_NAME_TYPES: [TokenType; 16] = [
         TokenType::Identifier,
         TokenType::Plus, TokenType::Minus, TokenType::Multiply, TokenType::Divide,
         TokenType::Equal, TokenType::NotEqual,
@@ -14,6 +14,7 @@ lazy_static! {
         TokenType::Less, TokenType::LessEqual,
         TokenType::And, TokenType::ShortcircuitAnd,
         TokenType::Or, TokenType::ShortcircuitOr,
+        TokenType::SquareBracketLeft, // [] operator
     ];
 }
 
@@ -92,6 +93,10 @@ impl<'source> Parser<'source> {
     fn parse_template_declaration(&mut self) -> Decl {
         self.expect_any(&*ALLOWED_TEMPLATE_NAME_TYPES, "Expected name after 'template'");
         let name = self.previous.clone();
+
+        if name.token_type() == TokenType::SquareBracketLeft {
+            self.expect(TokenType::SquareBracketRight, "Expected ']' after '[' in template name");
+        }
 
         self.expect(TokenType::ParenthesisLeft, "Expected '(' after template name");
         let mut arguments = vec![];
@@ -370,6 +375,13 @@ impl<'source> Parser<'source> {
                 let name = self.previous.clone();
 
                 expr = Expr::Member { receiver: Box::new(expr), name }
+            } else if self.matches(TokenType::SquareBracketLeft) {
+                let token = self.previous.clone();
+
+                let index = self.parse_expression();
+                self.expect(TokenType::SquareBracketRight, "Expected ']' after index expression");
+
+                expr = Expr::Index { receiver: Box::new(expr), operator: token, index: Box::new(index) }
             } else {
                 break;
             }

@@ -116,6 +116,11 @@ pub enum Expr {
         receiver: Box<Expr>,
         name: Token,
     },
+    Index {
+        receiver: Box<Expr>,
+        operator: Token,
+        index: Box<Expr>,
+    },
     BuiltinFunctionCall {
         name: Token,
         args: Vec<Expr>,
@@ -144,6 +149,7 @@ impl Debug for Expr {
                     .collect::<Vec<String>>().join(", "))
             },
             Expr::Member { receiver, name } => write!(f, "({:?}.{})", receiver, name.source()),
+            Expr::Index { receiver, index, .. } => write!(f, "({:?}[{:?}])", receiver, index),
             Expr::BuiltinFunctionCall { name, args } => {
                 write!(f, "(builtin.{}({}))", name.source(), args.iter()
                     .map(|expr| format!("{:?}", expr))
@@ -188,7 +194,17 @@ pub struct Template {
     pub file_path: Rc<RefCell<PathBuf>>,
 }
 
-#[derive(Debug)]
+impl PartialEq for Template {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.receiver == other.receiver
+            && self.args == other.args
+            && self.expr == other.expr
+            && self.file_path == other.file_path
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Module {
     pub name: String,
     pub sub_modules: Vec<Rc<RefCell<Module>>>,
