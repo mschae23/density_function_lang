@@ -22,6 +22,8 @@ struct TemplateCall {
     pub tailrec_index: u32,
 }
 
+type TemplateCompileData = (TemplateExpr, Vec<Rc<RefCell<Module>>>, Rc<RefCell<PathBuf>>);
+
 pub struct Compiler {
     current_module: Vec<Rc<RefCell<Module>>>,
     top_level_module: Rc<RefCell<Module>>,
@@ -118,7 +120,7 @@ impl Compiler {
         }
 
         let template_current_modules = self.current_module.iter()
-            .map(|module| Rc::downgrade(module)).collect();
+            .map(Rc::downgrade).collect();
 
         current_module.templates.push(Rc::new(RefCell::new(Template {
             name: name.source().to_owned(),
@@ -210,7 +212,7 @@ impl Compiler {
 
             let mut compiler = Compiler::new(path, self.target_dir.to_owned(), Rc::clone(&self.config));
             compiler.outer_top_level_module = Some(Rc::clone(&self.top_level_module));
-            compiler.outer_current_module = Some(self.current_module.iter().map(|module| Rc::clone(module)).collect());
+            compiler.outer_current_module = Some(self.current_module.iter().map(Rc::clone).collect());
             compiler.compile(declarations);
 
             if compiler.had_error() {
@@ -289,7 +291,7 @@ impl Compiler {
                     return;
                 }
 
-                current_module_borrow.imported_templates.push(Rc::clone(&template));
+                current_module_borrow.imported_templates.push(Rc::clone(template));
             }
         }
 
@@ -314,7 +316,7 @@ impl Compiler {
                     return;
                 }
 
-                current_module_borrow.imported_sub_modules.push(Rc::clone(&sub_module));
+                current_module_borrow.imported_sub_modules.push(Rc::clone(sub_module));
             }
         }
     }
@@ -340,7 +342,7 @@ impl Compiler {
             Expr::ConstantBoolean(value) => JsonElement::ConstantBoolean(value),
             Expr::ConstantString(value) => JsonElement::ConstantString(value),
             Expr::Identifier(name) => {
-                if let Some((_, element)) = self.template_scopes.last().map(|scope| scope.args.iter().rfind(|(arg, _)| *arg == *name.source())).flatten() {
+                if let Some((_, element)) = self.template_scopes.last().and_then(|scope| scope.args.iter().rfind(|(arg, _)| *arg == *name.source())) {
                     element.clone()
                 } else {
                     self.evaluate_identifier(name)
@@ -401,7 +403,7 @@ impl Compiler {
         };
 
         if static_expr {
-            if let Some(result) = self.evaluate_static_operator(&name, &args) {
+            if let Some(result) = self.evaluate_static_operator(&name, args) {
                 return Err(result);
             }
         }
@@ -417,7 +419,7 @@ impl Compiler {
         Ok((receiver, template))
     }
 
-    fn begin_compile_template(&mut self, template: Rc<RefCell<Template>>, receiver: Option<JsonElement>, token_pos: TokenPos, args: &Vec<JsonElement>) -> (TemplateExpr, Vec<Rc<RefCell<Module>>>, Rc<RefCell<PathBuf>>) {
+    fn begin_compile_template(&mut self, template: Rc<RefCell<Template>>, receiver: Option<JsonElement>, token_pos: TokenPos, args: &[JsonElement]) -> TemplateCompileData {
         let template_borrow = template.borrow();
 
         let mut scope_args = vec![];
@@ -428,11 +430,8 @@ impl Compiler {
             scope_args.push((String::from("this"), receiver));
         }
 
-        for i in 0..template_borrow.args.len() {
-            let name = template_borrow.args[i].clone();
-            let element = args[i].clone();
-
-            scope_args.push((name, element));
+        for (name, element) in template_borrow.args.iter().zip(args.iter()) {
+            scope_args.push((name.to_owned(), element.to_owned()));
         }
 
         self.template_scopes.push(TemplateScope { args: scope_args });
@@ -462,7 +461,7 @@ impl Compiler {
         (template_expr, template_current_modules, template_file_path)
     }
 
-    fn begin_compile_tailrec_template(&mut self, template: Rc<RefCell<Template>>, receiver: Option<JsonElement>, args: &Vec<JsonElement>) -> TemplateExpr {
+    fn begin_compile_tailrec_template(&mut self, template: Rc<RefCell<Template>>, receiver: Option<JsonElement>, args: &[JsonElement]) -> TemplateExpr {
         let template_borrow = template.borrow();
 
         let mut scope_args = vec![];
@@ -473,11 +472,8 @@ impl Compiler {
             scope_args.push((String::from("this"), receiver));
         }
 
-        for i in 0..template_borrow.args.len() {
-            let name = template_borrow.args[i].clone();
-            let element = args[i].clone();
-
-            scope_args.push((name, element));
+        for (name, element) in template_borrow.args.iter().zip(args.iter()) {
+            scope_args.push((name.to_owned(), element.to_owned()));
         }
 
         *self.template_scopes.last_mut().expect("Internal compiler error: No template scope for tailrec template") =
@@ -507,7 +503,7 @@ impl Compiler {
         };
         let (template_expr, template_current_modules, template_file_path) = self.begin_compile_template(Rc::clone(&template), receiver, token_pos, &args);
 
-        let expr = self.compile_template_expr(template_expr.clone(), Some(template), static_expr);
+        let expr = self.compile_template_expr(template_expr, Some(template), static_expr);
 
         self.end_compile_template(template_current_modules, template_file_path);
         expr
@@ -607,21 +603,17 @@ impl Compiler {
                 "&&" => binary_logic_op!(args, &&),
                 "||" => binary_logic_op!(args, ||),
 
-                "[" => match &args[0] {
-                    JsonElement::Array(array) => match &args[1] {
-                        JsonElement::ConstantInt(index) => {
-                            if *index < 0 || *index as usize > array.len() {
-                                self.error_at_with_context(*name.start(), "Array index out of bounds", vec![
-                                    ("Length", JsonElement::ConstantInt(array.len() as i32)),
-                                    ("Index", JsonElement::ConstantInt(*index))
-                                ], false)
-                            }
+                "[" => if let JsonElement::Array(array) = &args[0] {
+                    if let JsonElement::ConstantInt(index) = &args[1] {
+                        if *index < 0 || *index as usize > array.len() {
+                            self.error_at_with_context(*name.start(), "Array index out of bounds", vec![
+                                ("Length", JsonElement::ConstantInt(array.len() as i32)),
+                                ("Index", JsonElement::ConstantInt(*index))
+                            ], false)
+                        }
 
-                            return Some(array[*index as usize].clone())
-                        },
-                        _ => {},
-                    },
-                    _ => {},
+                        return Some(array[*index as usize].clone())
+                    }
                 },
                 _ => {},
             }
@@ -679,7 +671,7 @@ impl Compiler {
                                     continue;
                                 } else {
                                     let (template_expr, template_current_modules, template_file_path) = self.begin_compile_template(Rc::clone(&template), receiver, *token.start(), &compiled_args);
-                                    let expr = self.compile_template_expr(template_expr.clone(), Some(template), static_expr);
+                                    let expr = self.compile_template_expr(template_expr, Some(template), static_expr);
 
                                     self.end_compile_template(template_current_modules, template_file_path);
                                     return expr
@@ -696,19 +688,14 @@ impl Compiler {
     }
 
     fn find_template(&mut self, name: &Token, receiver: Option<&JsonElement>, arg_count: usize) -> Option<Rc<RefCell<Template>>> {
-        if let Some(receiver) = receiver {
-            match receiver {
-                JsonElement::Module(module) => return Self::find_template_on(module, name, false, arg_count),
-                _ => {},
-            }
+        if let Some(JsonElement::Module(module)) = receiver {
+            return Self::find_template_on(module, name, false, arg_count)
         }
 
-        if let Some((_, arg)) = self.template_scopes.last().and_then(|scope| scope.args.iter()
-            .find(|(arg_name, _)| arg_name == name.source())) {
-            match arg {
-                JsonElement::Template(template) => return Some(Rc::clone(template)),
-                _ => {},
-            }
+        if let Some((_, JsonElement::Template(template))) = self.template_scopes.last()
+            .and_then(|scope| scope.args.iter()
+                .find(|(arg_name, _)| arg_name == name.source())) {
+            return Some(Rc::clone(template));
         }
 
         let mut module_index: isize = self.current_module.len() as isize - 1;
@@ -718,7 +705,7 @@ impl Compiler {
                 &self.current_module[module_index as usize]
             } else { &self.top_level_module });
 
-            if let Some(template) = Self::find_template_on(&module, &name, receiver.is_some(), arg_count) {
+            if let Some(template) = Self::find_template_on(&module, name, receiver.is_some(), arg_count) {
                 return Some(template);
             }
 
@@ -775,12 +762,12 @@ impl Compiler {
     }
 
     fn evaluate_builtin_error_call(&mut self, name: Token, args: Vec<JsonElement>) -> JsonElement {
-        if args.len() == 0 {
+        if args.is_empty() {
             self.error_at(*name.start(), "builtin.error() called", false);
-        } else if args.len() > 0 {
+        } else {
             match &args[0] {
                 JsonElement::ConstantString(msg) =>
-                    self.error_at_with_context(*name.start(), &msg.to_owned(), args.into_iter()
+                    self.error_at_with_context(*name.start(), &msg.clone(), args.into_iter()
                         .skip(1).map(|arg| ("Context", arg)).collect(), false),
                 _ => self.error_at_with_context(*name.start(), "builtin.error() called", args.into_iter()
                     .map(|arg| ("Context", arg)).collect(), false),
@@ -851,20 +838,16 @@ impl Compiler {
                 if static_expr && name.source() == "type" {
                     return JsonElement::Type(JsonElementType::from(receiver));
                 } else if static_expr && name.source() == "length" {
-                    match receiver {
-                        JsonElement::Array(array) => return JsonElement::ConstantInt(array.len() as i32),
-                        _ => {},
+                    if let JsonElement::Array(array) = receiver {
+                        return JsonElement::ConstantInt(array.len() as i32);
                     }
                 }
 
                 if static_expr {
-                    match receiver {
-                        JsonElement::Object(fields) => {
-                            if let Some((_, field)) = fields.iter().find(|(key, _)| name.source() == key) {
-                                return field.clone();
-                            }
-                        },
-                        _ => {},
+                    if let JsonElement::Object(fields) = receiver {
+                        if let Some((_, field)) = fields.iter().find(|(key, _)| name.source() == key) {
+                            return field.clone();
+                        }
                     }
                 }
 
@@ -875,11 +858,11 @@ impl Compiler {
     }
 
     fn current_module(&self) -> Rc<RefCell<Module>> {
-        self.current_module.last().map(|module| Rc::clone(&module)).unwrap_or_else(|| Rc::clone(&self.top_level_module))
+        self.current_module.last().map(Rc::clone).unwrap_or_else(|| Rc::clone(&self.top_level_module))
     }
 
     fn current_or_outer_module(&self) -> Rc<RefCell<Module>> {
-        self.current_module.last().map(|module| Rc::clone(&module))
+        self.current_module.last().map(Rc::clone)
             .or_else(|| self.outer_current_module.as_ref()
                 .and_then(|modules| modules.last().map(Rc::clone))
                 .or_else(|| self.outer_top_level_module.as_ref().map(Rc::clone)))
@@ -935,13 +918,13 @@ impl Compiler {
                             acc.push('.');
                             Some(acc)
                         } else { None }
-                    } else { None }).unwrap_or_else(|| String::new());
+                    } else { None }).unwrap_or_default();
 
                 if template_call.tailrec_index > 0 {
                     if template_call.tailrec_index == 1 {
-                        eprint!("    ... 1 tail recursion call\n");
+                        eprintln!("    ... 1 tail recursion call");
                     } else {
-                        eprint!("    ... {} tail recursion calls\n", template_call.tailrec_index);
+                        eprintln!("    ... {} tail recursion calls", template_call.tailrec_index);
                     }
                 }
 

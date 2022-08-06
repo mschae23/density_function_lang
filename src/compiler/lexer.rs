@@ -71,7 +71,7 @@ pub struct Token {
     start: TokenPos, end: TokenPos,
 }
 
-impl<'a> Token {
+impl Token {
     pub fn new(token_type: TokenType, source: String, start: TokenPos, end: TokenPos) -> Token {
         Token {
             token_type, source,
@@ -234,7 +234,7 @@ impl<'source> Lexer<'source> {
                 '-' => {
                     let next = self.peek()?;
 
-                    if next >= '0' && next <= '9' {
+                    if ('0'..='9').contains(&next) {
                         self.scan_number()
                     } else {
                         Ok(if self.expect('=')? { self.make_token(TokenType::MinusAssign) } else {
@@ -345,10 +345,8 @@ impl<'source> Lexer<'source> {
             'i' => {
                 if let Some(c) = chars.next() {
                     match c {
-                        'f' => if let Some(c) = chars.next() {
-                            match c {
-                                _ => TokenType::Identifier,
-                            }
+                        'f' => if chars.next().is_some() {
+                            TokenType::Identifier
                         } else { TokenType::If },
                         'n' => {
                             if let Some(c) = chars.next() {

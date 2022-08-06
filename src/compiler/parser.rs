@@ -249,22 +249,19 @@ impl<'source> Parser<'source> {
         let condition = self.parse_expression();
         self.expect(TokenType::ParenthesisRight, "Expected ')' after 'if' condition");
 
-        let then;
-
-        if self.matches(TokenType::BracketLeft) {
-            then = self.parse_block_template_expression();
+        let then = if self.matches(TokenType::BracketLeft) {
+            self.parse_block_template_expression()
         } else {
-            then = self.parse_template_expression();
-        }
+            self.parse_template_expression()
+        };
 
         self.expect(TokenType::Else, "Expected 'else' after then clause of 'if' expression");
-        let otherwise;
 
-        if self.matches(TokenType::BracketLeft) {
-            otherwise = self.parse_block_template_expression();
+        let otherwise = if self.matches(TokenType::BracketLeft) {
+            self.parse_block_template_expression()
         } else {
-            otherwise = self.parse_template_expression();
-        }
+            self.parse_template_expression()
+        };
 
         TemplateExpr::If { token, condition, then: Box::new(then), otherwise: Box::new(otherwise) }
     }
@@ -645,6 +642,8 @@ impl<'source> Parser<'source> {
 
             match self.current.token_type() {
                 TokenType::Export => return,
+                TokenType::Template => return,
+                TokenType::Module => return,
                 _ => {},
             };
 

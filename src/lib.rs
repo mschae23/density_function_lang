@@ -30,7 +30,7 @@ pub struct Config {
 }
 
 pub fn parse(path: &Path) -> Result<Option<Vec<Decl>>, std::io::Error> {
-    let source = std::fs::read_to_string(path.to_owned())?;
+    let source = std::fs::read_to_string(path)?;
 
     let lexer = Lexer::new(&source);
     let mut parser = Parser::new(lexer, path.to_owned());
@@ -43,13 +43,15 @@ pub fn parse(path: &Path) -> Result<Option<Vec<Decl>>, std::io::Error> {
     Ok(Some(statements))
 }
 
-pub fn compile(path: PathBuf, target_dir: PathBuf, config: Rc<Config>) -> Result<Option<(Vec<Rc<RefCell<ExportFunction>>>, Compiler)>, std::io::Error> {
+type CompileResult = Option<(Vec<Rc<RefCell<ExportFunction>>>, Compiler)>;
+
+pub fn compile(path: PathBuf, target_dir: PathBuf, config: Rc<Config>) -> Result<CompileResult, std::io::Error> {
     let statements = match parse(&path)? {
         Some(result) => result,
         None => return Ok(None),
     };
 
-    let mut compiler = Compiler::new(path.to_owned(), target_dir.to_owned(), config);
+    let mut compiler = Compiler::new(path, target_dir, config);
     compiler.compile(statements);
     let functions = compiler.collect_exports();
 

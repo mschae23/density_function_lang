@@ -39,13 +39,13 @@ impl JsonWriter {
         write!(out, "{{")?;
 
         if self.pretty {
-            write!(out, "\n")?;
+            writeln!(out)?;
             self.indent_level += 1;
 
             let indentation = self.indentation.repeat(self.indent_level);
             let field_count = fields.len();
 
-            for (i, (name, field)) in fields.into_iter().enumerate() {
+            for (i, (name, field)) in fields.iter().enumerate() {
                 write!(out, "{}\"{}\": ", &indentation, name)?;
                 self.write_element(field, out)?;
 
@@ -53,7 +53,7 @@ impl JsonWriter {
                     write!(out, ",")?;
                 }
 
-                write!(out, "\n")?;
+                writeln!(out)?;
             }
 
             self.indent_level -= 1;
@@ -61,7 +61,7 @@ impl JsonWriter {
         } else {
             let field_count = fields.len();
 
-            for (i, (name, field)) in fields.into_iter().enumerate() {
+            for (i, (name, field)) in fields.iter().enumerate() {
                 write!(out, "\"{}\":", name)?;
                 self.write_element(field, out)?;
 
@@ -80,13 +80,13 @@ impl JsonWriter {
         write!(out, "[")?;
 
         if self.pretty {
-            write!(out, "\n")?;
+            writeln!(out)?;
             self.indent_level += 1;
 
             let indentation = self.indentation.repeat(self.indent_level);
             let field_count = elements.len();
 
-            for (i, element) in elements.into_iter().enumerate() {
+            for (i, element) in elements.iter().enumerate() {
                 write!(out, "{}", &indentation)?;
                 self.write_element(element, out)?;
 
@@ -94,7 +94,7 @@ impl JsonWriter {
                     write!(out, ",")?;
                 }
 
-                write!(out, "\n")?;
+                writeln!(out)?;
             }
 
             self.indent_level -= 1;
@@ -102,7 +102,7 @@ impl JsonWriter {
         } else {
             let field_count = elements.len();
 
-            for (i, element) in elements.into_iter().enumerate() {
+            for (i, element) in elements.iter().enumerate() {
                 self.write_element(element, out)?;
 
                 if i < field_count - 1 {

@@ -39,7 +39,7 @@ impl Debug for Decl {
         match self {
             Decl::Template { name, this, args, expr } =>
                 write!(f, "template {}({}{}) = {:?};", name.source(),
-                    this.as_ref().map(|this| format!("{}, ", this.source())).unwrap_or_else(|| String::new()),
+                    this.as_ref().map(|this| format!("{}, ", this.source())).unwrap_or_else(String::new),
                     args.iter()
                         .map(|arg| arg.source().to_owned())
                         .collect::<Vec<String>>().join(", "), expr),
