@@ -4,6 +4,7 @@ use lazy_static::lazy_static;
 use crate::debug;
 use crate::compiler::lexer::{Lexer, LexerError, Token, TokenPos, TokenType};
 use crate::compiler::ast::simple::{Expr, JsonElementType, Decl, TemplateExpr, VariableType};
+use crate::compiler::ast::typed::ExprType;
 
 lazy_static! {
     static ref ALLOWED_TEMPLATE_NAME_TYPES: [TokenType; 16] = [
@@ -567,15 +568,13 @@ impl<'source> Parser<'source> {
         let name = self.previous.clone();
 
         match name.source() {
-            "float" => Expr::BuiltinType(JsonElementType::Float),
-            "int" => Expr::BuiltinType(JsonElementType::Int),
-            "boolean" => Expr::BuiltinType(JsonElementType::Boolean),
-            "string" => Expr::BuiltinType(JsonElementType::String),
-            "object" => Expr::BuiltinType(JsonElementType::Object),
-            "array" => Expr::BuiltinType(JsonElementType::Array),
-            "module" => Expr::BuiltinType(JsonElementType::Module),
-            "template" => Expr::BuiltinType(JsonElementType::Template),
-            "type" => Expr::BuiltinType(JsonElementType::Type),
+            "float" => Expr::BuiltinType(ExprType::Float),
+            "int" => Expr::BuiltinType(ExprType::Int),
+            "boolean" => Expr::BuiltinType(ExprType::Boolean),
+            "string" => Expr::BuiltinType(ExprType::String),
+            "object" => Expr::BuiltinType(ExprType::Object),
+            "array" => Expr::BuiltinType(ExprType::Array),
+            "type" => Expr::BuiltinType(ExprType::Type),
             _ => {
                 self.error("Unknown type", true);
                 Expr::Error

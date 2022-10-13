@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::fmt::{Debug, Formatter};
 use std::path::PathBuf;
 use std::rc::{Rc, Weak};
+use crate::compiler::ast::typed::ExprType;
 
 use crate::compiler::lexer::Token;
 
@@ -144,7 +145,7 @@ pub enum Expr {
         name: Token,
         args: Vec<Expr>,
     },
-    BuiltinType(JsonElementType),
+    BuiltinType(ExprType),
 
     Object(Vec<(Token, Expr)>),
     Array(Vec<Expr>),

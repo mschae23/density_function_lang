@@ -197,7 +197,7 @@ pub enum TypedExpr {
         args: Vec<TypedExpr>,
         result_type: ExprType,
     },
-    BuiltinType(JsonElementType, ExprType),
+    BuiltinType(ExprType),
 
     Object(Vec<(Token, TypedExpr)>),
     Array(Vec<TypedExpr>),
@@ -219,7 +219,7 @@ impl TypedExpr {
             TypedExpr::Member { result_type, .. } => result_type.clone(),
             TypedExpr::Index { result_type, .. } => result_type.clone(),
             TypedExpr::BuiltinFunctionCall { result_type, .. } => result_type.clone(),
-            TypedExpr::BuiltinType(_, expr_type) => expr_type.clone(),
+            TypedExpr::BuiltinType(_) => ExprType::Type,
             TypedExpr::Object(_) => ExprType::Object,
             TypedExpr::Array(_) => ExprType::Array,
             TypedExpr::Error => ExprType::Error,

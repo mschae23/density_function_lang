@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use crate::compiler::ast::simple::{Expr, TemplateExpr};
 use crate::compiler::lexer::TokenPos;
 use crate::{Config, Decl};
@@ -10,9 +10,11 @@ use crate::compiler::ast::typed::{ExprType, TypedDecl, TypedExpr, TypedImportabl
 
 struct TypeEnvironment {
     templates: Vec<(String, Rc<RefCell<TypedTemplateDecl>>, ExprType)>,
-    modules: HashMap<String, (Rc<RefCell<TypedModuleDecl>>, ExprType)>,
+    modules: HashMap<String, Rc<RefCell<TypedModuleDecl>>>,
     variables: HashMap<String, (Rc<RefCell<TypedVariableDecl>>, ExprType)>,
-    parent: Option<Rc<RefCell<TypeEnvironment>>>,
+
+    parent: Option<Weak<RefCell<TypeEnvironment>>>,
+    children: Vec<Rc<RefCell<TypeEnvironment>>>,
 }
 
 impl TypeEnvironment {
@@ -21,7 +23,8 @@ impl TypeEnvironment {
             templates: Vec::new(),
             modules: HashMap::new(),
             variables: HashMap::new(),
-            parent: None,
+
+            parent: None, children: Vec::new(),
         }))
     }
 
@@ -30,22 +33,18 @@ impl TypeEnvironment {
             templates: Vec::new(),
             modules: HashMap::new(),
             variables: HashMap::new(),
-            parent: Some(parent),
+
+            parent: Some(Rc::downgrade(&parent)), children: Vec::new(),
         }))
     }
 
-    pub fn contains(&self, name: &str, recurse_to_parent: bool) -> bool {
-        // TODO implement lookup in parent
+    pub fn contains(&self, name: &str) -> bool {
         self.modules.contains_key(name) || self.variables.contains_key(name)
         || self.templates.iter().any(|(template_name, _, _)| *template_name == *name)
     }
 
-    pub fn find_template(&self, name: &str, this: Option<ExprType>, args: Vec<ExprType>) -> Option<(Rc<RefCell<TypedTemplateDecl>>, ExprType)> {
-        self.find_template_impl(name, this.as_ref(), &args, true)
-    }
-
-    fn find_template_impl(&self, name: &str, this: Option<&ExprType>, args: &[ExprType], recurse_to_parent: bool) -> Option<(Rc<RefCell<TypedTemplateDecl>>, ExprType)> {
-        // TODO lookup in parent
+    pub fn find_template(&self, name: &str, this: Option<&ExprType>, args: &[ExprType], _recurse_to_parent: bool) -> Option<(Rc<RefCell<TypedTemplateDecl>>, ExprType)> {
+        // TODO implement lookup in parent
         self.templates.iter().find(|(template_name, template, _)| *template_name == *name
             && template.borrow().this.is_some() == this.is_some()
             && template.borrow().this.and_then(|token| this.map(|expr_type| token.expr_type == *expr_type)).unwrap_or(true)
@@ -56,7 +55,7 @@ impl TypeEnvironment {
     }
 
     pub fn put_template(&mut self, name: String, decl: Rc<RefCell<TypedTemplateDecl>>, expr_type: ExprType) -> bool {
-        if self.find_template_impl(&name,
+        if self.find_template(&name,
             decl.borrow().this.as_ref().map(|token| &token.expr_type),
         &decl.borrow().args.iter().map(|token| token.expr_type.clone()).collect::<Vec<ExprType>>(), false).is_some() {
             false
@@ -65,9 +64,34 @@ impl TypeEnvironment {
             true
         }
     }
+
+    pub fn put_variable(&mut self, name: String, decl: Rc<RefCell<TypedVariableDecl>>, expr_type: ExprType) -> bool {
+        match self.variables.entry(name) {
+            Entry::Occupied(_) => false,
+            Entry::Vacant(entry) => {
+                entry.insert((decl, expr_type));
+                true
+            },
+        }
+    }
+
+    pub fn put_module(&mut self, name: String, decl: Rc<RefCell<TypedModuleDecl>>) -> bool {
+        match self.modules.entry(name) {
+            Entry::Occupied(_) => false,
+            Entry::Vacant(entry) => {
+                entry.insert(decl);
+                true
+            },
+        }
+    }
+
+    pub fn add_child(&mut self, environment: Rc<RefCell<TypeEnvironment>>) {
+        self.children.push(environment);
+    }
 }
 
 pub struct TypeChecker {
+    global_environment: Rc<RefCell<TypeEnvironment>>,
     environment: Rc<RefCell<TypeEnvironment>>,
 
     path: PathBuf, target_dir: PathBuf,
@@ -78,8 +102,10 @@ pub struct TypeChecker {
 
 impl TypeChecker {
     pub fn new(path: PathBuf, target_dir: PathBuf, config: Rc<Config>) -> TypeChecker {
+        let environment = TypeEnvironment::new_global();
+
         TypeChecker {
-            environment: TypeEnvironment::new_global(),
+            global_environment: Rc::clone(&environment), environment,
             path, target_dir,
             had_error: false, panic_mode: false,
             config,
@@ -99,35 +125,58 @@ impl TypeChecker {
     fn check_declaration(&mut self, decl: Decl) -> TypedDecl {
         match decl {
             Decl::Template { name, this, args, expr } => {
-                if self.environment.borrow().contains(name.source(), false) {
+                if self.environment.borrow().contains(name.source()) {
                     self.error_at(*name.start(), "Template with duplicate name", false);
                 }
 
-                TypedDecl::Template(Rc::new(RefCell::new(TypedTemplateDecl {
-                    name,
-                    this: this.map(|token| TypedToken { token, expr_type: ExprType::Any }),
-                    args: args.into_iter().map(|token| TypedToken { token, expr_type: ExprType::Any }).collect(),
-                    expr: self.check_template_expr(expr),
-                })))
+                let typed_this = this.map(|token| TypedToken { token, expr_type: ExprType::Any });
+                let typed_args = args.into_iter().map(|token| TypedToken { token, expr_type: ExprType::Any }).collect();
+                let typed_expr = self.check_template_expr(expr);
+                let expr_type = typed_expr.get_type();
+
+                let template_decl = Rc::new(RefCell::new(TypedTemplateDecl {
+                    name, this: typed_this, args: typed_args, expr: typed_expr,
+                }));
+
+                self.environment.borrow_mut().put_template(name.source().to_owned(), Rc::clone(&template_decl), expr_type);
+                TypedDecl::Template(template_decl)
             },
             Decl::Variable { name, expr, kind } => {
-                TypedDecl::Variable(Rc::new(RefCell::new(TypedVariableDecl {
+                let typed_expr = self.check_expr(expr);
+                let expr_type = typed_expr.get_type();
+
+                let variable = Rc::new(RefCell::new(TypedVariableDecl {
                     name,
-                    expr: self.check_expr(expr),
+                    expr: typed_expr,
                     kind,
-                })))
+                }));
+
+                self.environment.borrow_mut().put_variable(name.source().to_owned(), Rc::clone(&variable), expr_type);
+                TypedDecl::Variable(variable)
             },
             Decl::Module { name, statements: declarations } => {
-                TypedDecl::Module(Rc::new(RefCell::new(TypedModuleDecl {
+                let current_environment = self.environment();
+                let child_environment = TypeEnvironment::new_with_parent(Rc::clone(&current_environment));
+                self.environment = Rc::clone(&child_environment);
+
+                let typed_declarations = declarations.into_iter().map(|decl| self.check_declaration(decl)).collect();
+
+                current_environment.borrow_mut().add_child(child_environment);
+                self.environment = current_environment;
+
+                let module = Rc::new(RefCell::new(TypedModuleDecl {
                     name,
-                    declarations: declarations.into_iter().map(|decl| self.check_declaration(decl)).collect(),
-                }))) 
+                    declarations: typed_declarations,
+                }));
+
+                self.environment.borrow_mut().put_module(name.source().to_owned(), Rc::clone(&module));
+                TypedDecl::Module(module)
             }
-            Decl::Include { path, declarations } => {
+            Decl::Include { path, declarations: _ } => {
                 self.error_at(*path.start(), "Include declarations are not supported yet", false);
                 TypedDecl::Error
             },
-            Decl::Import { path, selector } => {
+            Decl::Import { path, selector: _ } => {
                 self.error_at(path.first()
                     .map(|token| *token.start())
                     .unwrap_or(TokenPos { line: 0, column: 0 }), "Import declarations are not supported yet", false);
@@ -182,11 +231,15 @@ impl TypeChecker {
             Expr::Member { receiver, name } => {},
             Expr::Index { receiver, operator, index } => {},
             Expr::BuiltinFunctionCall { name, args } => {},
-            Expr::BuiltinType(ty) => TypedExpr::BuiltinType(ty, ExprType::Type),
+            Expr::BuiltinType(ty) => TypedExpr::BuiltinType(ty),
             Expr::Object(fields) => {},
             Expr::Array(elements) => {},
             Expr::Error => TypedExpr::Error,
         }
+    }
+
+    fn environment(&self) -> Rc<RefCell<TypeEnvironment>> {
+        Rc::clone(&self.environment)
     }
 
     // Error handling
