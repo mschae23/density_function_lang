@@ -1,5 +1,5 @@
 use std::io::Write;
-use crate::compiler::ast::JsonElement;
+use crate::compiler::ast::simple::JsonElement;
 
 pub struct JsonWriter {
     indentation: String,

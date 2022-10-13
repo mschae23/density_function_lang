@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use crate::compiler::ast::{Expr, JsonElement, Module, ExportFunction, Decl, Template, TemplateExpr, JsonElementType, CompiledExport};
+use crate::compiler::ast::simple::{Expr, JsonElement, Module, ExportFunction, Decl, Template, TemplateExpr, JsonElementType, CompiledExport};
 use crate::compiler::lexer::{Token, TokenPos};
 use crate::Config;
 
@@ -22,9 +22,9 @@ struct TemplateCall {
     pub tailrec_index: u32,
 }
 
-type TemplateCompileData = (TemplateExpr, Vec<Rc<RefCell<Module>>>, Rc<RefCell<PathBuf>>);
-
 pub struct Compiler {
+    path: PathBuf, target_dir: PathBuf,
+
     had_error: bool, panic_mode: bool,
     config: Rc<Config>,
 }
@@ -32,6 +32,7 @@ pub struct Compiler {
 impl Compiler {
     pub fn new(path: PathBuf, target_dir: PathBuf, config: Rc<Config>) -> Compiler {
         Compiler {
+            path, target_dir,
             had_error: false, panic_mode: false,
             config,
         }
@@ -54,13 +55,13 @@ impl Compiler {
             self.panic_mode = true;
         }
 
-        eprintln!("[{}:{}:{}] Error: {}", self.path.borrow().to_string_lossy(), pos.line, pos.column, message);
+        eprintln!("[{}:{}:{}] Error: {}", self.path.to_string_lossy(), pos.line, pos.column, message);
 
         for (name, context_element) in &context {
             eprintln!("    {}: {:?}", *name, context_element);
         }
 
-        if self.config.verbose && !context.is_empty() && !self.template_call_stack.is_empty() {
+        /* if self.config.verbose && !context.is_empty() && !self.template_call_stack.is_empty() {
             eprintln!();
         }
 
@@ -99,7 +100,7 @@ impl Compiler {
                 eprintln!("    at [{}:{}:{}] {}{}({})", template_call.path.borrow().to_string_lossy(),
                     template_call.line, template_call.column, template_path, &template_call.name, args.join(", "));
             }
-        }
+        } */
 
         self.had_error = true;
     }

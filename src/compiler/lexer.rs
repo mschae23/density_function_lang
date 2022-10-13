@@ -47,15 +47,14 @@ pub enum TokenType {
     And, ShortcircuitAnd,
     Or, ShortcircuitOr,
 
-    Identifier,
+    Identifier, Underscore,
     Int, Float,
     String,
 
     // Keywords
     Builtin,
-    Inline,
     Template, This,
-    Export,
+    Export, Inline,
     If, Else,
     Module, Include, Import,
     True, False,
@@ -329,7 +328,7 @@ impl<'source> Lexer<'source> {
             let _ = self.consume();
         }
 
-        let name = &self.input[self.start_index..self.current_index];
+        let name: &str = &self.input[self.start_index..self.current_index];
         let mut chars = name.chars();
 
         let token_type = match chars.next().expect("Internal compiler error: Empty identifier") {
@@ -373,6 +372,8 @@ impl<'source> Lexer<'source> {
                     }
                 } else { TokenType::Identifier }
             },
+            '_' => if chars.next().is_some() { TokenType::Identifier
+            } else { TokenType::Underscore },
             _ => TokenType::Identifier,
         };
 

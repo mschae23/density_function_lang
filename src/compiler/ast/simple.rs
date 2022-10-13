@@ -5,6 +5,23 @@ use std::rc::{Rc, Weak};
 
 use crate::compiler::lexer::Token;
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum VariableType {
+    Simple,
+    Inline,
+    Export,
+}
+
+impl Debug for VariableType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VariableType::Simple => write!(f, "simple"),
+            VariableType::Inline => write!(f, "inline"),
+            VariableType::Export => write!(f, "export"),
+        }
+    }
+}
+
 #[derive(Clone, PartialEq)]
 pub enum Decl {
     Template {
@@ -14,9 +31,10 @@ pub enum Decl {
         expr: TemplateExpr,
     },
 
-    Export {
+    Variable {
         name: Token,
         expr: Expr,
+        kind: VariableType,
     },
 
     Module {
@@ -25,6 +43,7 @@ pub enum Decl {
     },
     Include {
         path: Token,
+        declarations: Vec<Decl>, // From a different file
     },
     Import {
         path: Vec<Token>,
@@ -39,22 +58,22 @@ impl Debug for Decl {
         match self {
             Decl::Template { name, this, args, expr } =>
                 write!(f, "template {}({}{}) = {:?};", name.source(),
-                    this.as_ref().map(|this| format!("{}, ", this.source())).unwrap_or_else(String::new),
-                    args.iter()
-                        .map(|arg| arg.source().to_owned())
-                        .collect::<Vec<String>>().join(", "), expr),
+                       this.as_ref().map(|this| format!("{}, ", this.source())).unwrap_or_else(String::new),
+                       args.iter()
+                           .map(|arg| arg.source().to_owned())
+                           .collect::<Vec<String>>().join(", "), expr),
 
-            Decl::Export { name, expr } =>
-                write!(f, "export {} = {:?};", name.source(), expr),
+            Decl::Variable { name, expr, kind } =>
+                write!(f, "{:?} {} = {:?};", kind, name.source(), expr),
 
             Decl::Module { name, statements } =>
                 write!(f, "module {} {{ {} }}", name.source(), statements.iter().map(|stmt| format!("{:?}", stmt))
                     .collect::<Vec<String>>().join(" ")),
-            Decl::Include { path } => write!(f, "include \"{}\";", path.source()),
+            Decl::Include { path, declarations: _ } => write!(f, "include \"{}\";", path.source()),
             Decl::Import { path, selector } => write!(f, "{}.{}",
-                path.iter().map(|name| name.source().to_owned()).collect::<Vec<String>>().join("."),
-                selector.as_ref().map(|names| names.iter().map(|name| name.source().to_owned()).collect::<Vec<String>>().join(", "))
-                    .map(|names| format!("{{{}}}", names)).unwrap_or_else(|| String::from("*"))),
+                                                      path.iter().map(|name| name.source().to_owned()).collect::<Vec<String>>().join("."),
+                                                      selector.as_ref().map(|names| names.iter().map(|name| name.source().to_owned()).collect::<Vec<String>>().join(", "))
+                                                          .map(|names| format!("{{{}}}", names)).unwrap_or_else(|| String::from("*"))),
 
             Decl::Error => write!(f, "Error;")
         }

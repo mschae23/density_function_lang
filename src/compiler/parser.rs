@@ -3,7 +3,7 @@ use lazy_static::lazy_static;
 #[allow(unused)]
 use crate::debug;
 use crate::compiler::lexer::{Lexer, LexerError, Token, TokenPos, TokenType};
-use crate::compiler::ast::{Expr, JsonElementType, Decl, TemplateExpr};
+use crate::compiler::ast::simple::{Expr, JsonElementType, Decl, TemplateExpr, VariableType};
 
 lazy_static! {
     static ref ALLOWED_TEMPLATE_NAME_TYPES: [TokenType; 16] = [
@@ -47,13 +47,13 @@ impl<'source> Parser<'source> {
     pub fn parse(&mut self) -> Vec<Decl> {
         self.consume();
 
-        let mut statements = Vec::new();
+        let mut declarations = Vec::new();
 
         while !self.is_eof() {
-            statements.push(self.parse_declaration());
+            declarations.push(self.parse_declaration());
         }
 
-        statements
+        declarations
     }
 
     fn parse_declaration(&mut self) -> Decl {
@@ -87,16 +87,22 @@ impl<'source> Parser<'source> {
         let expr = self.parse_expression();
         self.expect_statement_end();
 
-        Decl::Export { name, expr }
+        Decl::Variable { name, expr, kind: VariableType::Export }
     }
 
-    fn parse_template_declaration(&mut self) -> Decl {
-        self.expect_any(&*ALLOWED_TEMPLATE_NAME_TYPES, "Expected name after 'template'");
+    fn expect_template_name(&mut self, message: &str) -> Token {
+        self.expect_any(&*ALLOWED_TEMPLATE_NAME_TYPES, message);
         let name = self.previous.clone();
 
         if name.token_type() == TokenType::SquareBracketLeft {
             self.expect(TokenType::SquareBracketRight, "Expected ']' after '[' in template name");
         }
+
+        name
+    }
+
+    fn parse_template_declaration(&mut self) -> Decl {
+        let name = self.expect_template_name("Expected name after 'template'");
 
         self.expect(TokenType::ParenthesisLeft, "Expected '(' after template name");
         let mut arguments = vec![];
@@ -155,7 +161,30 @@ impl<'source> Parser<'source> {
         let name = self.previous.clone();
         self.expect_statement_end();
 
-        Decl::Include { path: name }
+        let include_path = PathBuf::from(name.source());
+
+        let declarations = if include_path.is_absolute() {
+            self.error_at(Some(&name), "Include path must be relative", false);
+            Vec::new()
+        } else {
+            let mut path = self.path.clone();
+            path.pop();
+            path.push(&include_path);
+
+            match crate::parse(&path) {
+                Ok(Some(result)) => result,
+                Ok(None) => {
+                    self.error_at(Some(&name), &format!("Error in included file: \"{}\"", name.source()), false);
+                    Vec::new()
+                },
+                Err(err) => {
+                    self.error_at(Some(&name), &format!("IO error while trying to compile included file: {}", err), false);
+                    Vec::new()
+                }
+            }
+        };
+
+        Decl::Include { path: name, declarations }
     }
 
     fn parse_import_declaration(&mut self) -> Decl {
@@ -176,8 +205,7 @@ impl<'source> Parser<'source> {
             } else if self.matches(TokenType::BracketLeft) {
                 let mut names = vec![];
 
-                self.expect_any(&*ALLOWED_TEMPLATE_NAME_TYPES, "Expected name after '{'");
-                let name = self.previous.clone();
+                let name = self.expect_template_name("Expected name after '{'");
                 names.push(name);
 
                 while self.matches(TokenType::Comma) {
@@ -185,8 +213,7 @@ impl<'source> Parser<'source> {
                         break;
                     }
 
-                    self.expect_any(&*ALLOWED_TEMPLATE_NAME_TYPES, "Expected name after ','");
-                    let name = self.previous.clone();
+                    let name = self.expect_template_name("Expected name after ','");
                     names.push(name);
                 }
 
@@ -195,8 +222,7 @@ impl<'source> Parser<'source> {
                 break;
             }
 
-            self.expect_any(&*ALLOWED_TEMPLATE_NAME_TYPES, "Expected name after '.'");
-            let name = self.previous.clone();
+            let name = self.expect_template_name("Expected name after '.'");
 
             if !self.check(TokenType::Semicolon) && name.token_type() != TokenType::Identifier {
                 self.error("Expected name after '.'", true);
@@ -571,7 +597,7 @@ impl<'source> Parser<'source> {
                     break
                 },
 
-                Err(err) => self.error_from_parser(&err),
+                Err(err) => self.error_from_lexer(&err),
             }
         }
     }
@@ -654,22 +680,26 @@ impl<'source> Parser<'source> {
     // Error handling
 
     fn error_at_current(&mut self, message: &str, panic: bool) {
-        Self::error_at(&mut self.had_error, &mut self.panic_mode, &self.path, Some(&self.current), message, panic);
+        Self::error_at_impl(&self.path, &mut self.had_error, &mut self.panic_mode, Some(&self.current), message, panic);
     }
 
     fn error(&mut self, message: &str, panic: bool) {
-        Self::error_at(&mut self.had_error, &mut self.panic_mode, &self.path, Some(&self.previous), message, panic);
+        Self::error_at_impl(&self.path, &mut self.had_error, &mut self.panic_mode, Some(&self.previous), message, panic);
     }
 
-    fn error_from_parser(&mut self, error: &LexerError) {
+    fn error_from_lexer(&mut self, error: &LexerError) {
         if let Some(pos) = error.get_pos() {
             eprint!("[{}:{}:{}] ", self.path.to_string_lossy(), pos.line, pos.column);
         }
 
-        Self::error_at(&mut self.had_error, &mut self.panic_mode, &self.path, None, &error.to_string(), true);
+        self.error_at(None, &error.to_string(), true);
     }
 
-    fn error_at(had_error: &mut bool, panic_mode: &mut bool, path: &Path, token: Option<&Token>, message: &str, panic: bool) {
+    fn error_at(&mut self, token: Option<&Token>, message: &str, panic: bool) {
+        Self::error_at_impl(&self.path, &mut self.had_error, &mut self.panic_mode, token, message, panic);
+    }
+
+    fn error_at_impl(path: &Path, had_error: &mut bool, panic_mode: &mut bool, token: Option<&Token>, message: &str, panic: bool) {
         if *panic_mode {
             return;
         } else if panic {

@@ -6,7 +6,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use clap::Parser as ClapParser;
-use crate::compiler::ast::{Decl, ExportFunction};
+use crate::compiler::ast::simple::{Decl, ExportFunction};
 use crate::compiler::compiler::Compiler;
 use crate::compiler::lexer::Lexer;
 use crate::compiler::parser::Parser;
@@ -34,13 +34,13 @@ pub fn parse(path: &Path) -> Result<Option<Vec<Decl>>, std::io::Error> {
 
     let lexer = Lexer::new(&source);
     let mut parser = Parser::new(lexer, path.to_owned());
-    let statements = parser.parse();
+    let declarations = parser.parse();
 
     if parser.had_error() {
         return Ok(None);
     }
 
-    Ok(Some(statements))
+    Ok(Some(declarations))
 }
 
 type CompileResult = Option<((), Compiler)>;
@@ -73,7 +73,7 @@ pub fn run() -> Result<(), std::io::Error> {
     std::fs::create_dir_all(&config.target_dir)?;
     let mut writer = JsonWriter::new(config.indentation.to_owned(), !config.no_pretty_print);
 
-    for function in functions {
+    /* for function in functions { // TODO
         let function = &*function.borrow();
 
         if let Some(parent) = function.path.parent() {
@@ -84,7 +84,7 @@ pub fn run() -> Result<(), std::io::Error> {
 
         writer.write_element(&function.json, &mut file)?;
         file.write_all(b"\n")?;
-    }
+    } */
 
     Ok(())
 }
