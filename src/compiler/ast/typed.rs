@@ -10,6 +10,7 @@ pub enum ExprType {
     Float, Int, Boolean, String,
     Object, Array,
     Type,
+    Module,
     Any,
     Error,
     // @formatter:on
@@ -25,6 +26,7 @@ impl Debug for ExprType {
             ExprType::Object => write!(f, "object"),
             ExprType::Array => write!(f, "array"),
             ExprType::Type => write!(f, "type"),
+            ExprType::Module => write!(f, "module"),
             ExprType::Any | ExprType::Error => write!(f, "_"),
         }
     }
@@ -59,7 +61,7 @@ impl Debug for TypedTemplateDecl {
 #[derive(Clone, PartialEq)]
 pub struct TypedModuleDecl {
     pub name: Token,
-    pub statements: Vec<TypedDecl>,
+    pub declarations: Vec<TypedDecl>,
 }
 
 impl Debug for TypedModuleDecl {
@@ -134,6 +136,16 @@ pub enum TypedTemplateExpr {
     Simple(TypedExpr),
 }
 
+impl TypedTemplateExpr {
+    pub fn get_type(&self) -> ExprType {
+        match self {
+            TypedTemplateExpr::Block { last, .. } => last.get_type(),
+            TypedTemplateExpr::If { result_type, .. } => result_type.clone(),
+            TypedTemplateExpr::Simple(expr) => expr.get_type(),
+        }
+    }
+}
+
 impl Debug for TypedTemplateExpr {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "<type-checked template expr>")
@@ -191,6 +203,28 @@ pub enum TypedExpr {
     Array(Vec<TypedExpr>),
 
     Error,
+}
+
+impl TypedExpr {
+    pub fn get_type(&self) -> ExprType {
+        match self {
+            TypedExpr::ConstantFloat(_) => ExprType::Float,
+            TypedExpr::ConstantInt(_) => ExprType::Int,
+            TypedExpr::ConstantBoolean(_) => ExprType::Boolean,
+            TypedExpr::ConstantString(_) => ExprType::String,
+            TypedExpr::Identifier { expr_type, .. } => expr_type.clone(),
+            TypedExpr::UnaryOperator { result_type, .. } => result_type.clone(),
+            TypedExpr::BinaryOperator { result_type, .. } => result_type.clone(),
+            TypedExpr::FunctionCall { result_type, .. } => result_type.clone(),
+            TypedExpr::Member { result_type, .. } => result_type.clone(),
+            TypedExpr::Index { result_type, .. } => result_type.clone(),
+            TypedExpr::BuiltinFunctionCall { result_type, .. } => result_type.clone(),
+            TypedExpr::BuiltinType(_, expr_type) => expr_type.clone(),
+            TypedExpr::Object(_) => ExprType::Object,
+            TypedExpr::Array(_) => ExprType::Array,
+            TypedExpr::Error => ExprType::Error,
+        }
+    }
 }
 
 impl Debug for TypedExpr {
