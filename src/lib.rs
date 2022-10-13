@@ -43,7 +43,7 @@ pub fn parse(path: &Path) -> Result<Option<Vec<Decl>>, std::io::Error> {
     Ok(Some(statements))
 }
 
-type CompileResult = Option<(Vec<Rc<RefCell<ExportFunction>>>, Compiler)>;
+type CompileResult = Option<((), Compiler)>;
 
 pub fn compile(path: PathBuf, target_dir: PathBuf, config: Rc<Config>) -> Result<CompileResult, std::io::Error> {
     let statements = match parse(&path)? {
@@ -52,14 +52,14 @@ pub fn compile(path: PathBuf, target_dir: PathBuf, config: Rc<Config>) -> Result
     };
 
     let mut compiler = Compiler::new(path, target_dir, config);
-    compiler.compile(statements);
-    let functions = compiler.collect_exports();
+    // compiler.compile(statements);
+    // let functions = compiler.collect_exports();
 
     if compiler.had_error() {
         return Ok(None);
     }
 
-    Ok(Some((functions, compiler)))
+    Ok(Some(((), compiler)))
 }
 
 pub fn run() -> Result<(), std::io::Error> {
