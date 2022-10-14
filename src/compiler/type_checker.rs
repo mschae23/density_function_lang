@@ -43,21 +43,39 @@ impl TypeEnvironment {
         || self.templates.iter().any(|(template_name, _, _)| *template_name == *name)
     }
 
-    pub fn find_template(&self, name: &str, this: Option<&ExprType>, args: &[ExprType], _recurse_to_parent: bool) -> Option<(Rc<RefCell<TypedTemplateDecl>>, ExprType)> {
-        // TODO implement lookup in parent
-        self.templates.iter().find(|(template_name, template, _)| *template_name == *name
+    fn compare_types(&self, expected: &ExprType, found: &ExprType, allow_coerce: bool) -> bool {
+        if allow_coerce {
+            found.can_coerce_to(expected)
+        } else {
+            *found == *expected
+        }
+    }
+
+    pub fn find_template(&self, name: &str, this: Option<&ExprType>, args: &[ExprType], allow_coerce: bool, recurse_to_parent: bool) -> Option<(Rc<RefCell<TypedTemplateDecl>>, ExprType)> {
+        let mut filtered = self.templates.iter().filter(|(template_name, template, _)|
+            *template_name == *name
             && template.borrow().this.is_some() == this.is_some()
-            && template.borrow().this.and_then(|token| this.map(|expr_type| token.expr_type == *expr_type)).unwrap_or(true)
-            && template.borrow().args.len() == args.len()
-            && template.borrow().args.iter().map(|arg| arg.expr_type.clone())
-            .zip(args.iter()).map(|(left, right)| left == right.clone()).all(|b| b))
-            .map(|(name, decl, expr_type)| (Rc::clone(decl), expr_type.clone()))
+            && template.borrow().args.len() == args.len());
+
+        let found = filtered
+            .find(|(template_name, template, _)|
+                template.borrow().this.as_ref().and_then(|token| this.map(|expr_type| self.compare_types(&token.expr_type, expr_type, allow_coerce))).unwrap_or(true)
+                && template.borrow().args.iter().map(|arg| arg.expr_type.clone())
+                    .zip(args.iter()).map(|(left, right)| self.compare_types(&left, right, allow_coerce)).all(|b| b))
+            .map(|(name, decl, expr_type)| (Rc::clone(decl), expr_type.clone()));
+
+        if recurse_to_parent {
+            found.or_else(|| self.parent.as_ref().and_then(|parent| parent.upgrade())
+                .and_then(|parent| parent.borrow().find_template(name, this, args, allow_coerce, recurse_to_parent)))
+        } else {
+            found
+        }
     }
 
     pub fn put_template(&mut self, name: String, decl: Rc<RefCell<TypedTemplateDecl>>, expr_type: ExprType) -> bool {
         if self.find_template(&name,
             decl.borrow().this.as_ref().map(|token| &token.expr_type),
-        &decl.borrow().args.iter().map(|token| token.expr_type.clone()).collect::<Vec<ExprType>>(), false).is_some() {
+        &decl.borrow().args.iter().map(|token| token.expr_type.clone()).collect::<Vec<ExprType>>(), false, false).is_some() {
             false
         } else {
             self.templates.push((name, decl, expr_type));
@@ -128,7 +146,7 @@ impl TypeDeclarationEnvironment {
     pub fn find_template(&self, name: &str, this: Option<&ExprType>, args: &[ExprType]) -> Option<&TemplateDeclaration> {
         self.templates.iter().find(|template| *template.name.source() == *name
             && template.this.is_some() == this.is_some()
-            && template.this.and_then(|token| this.map(|expr_type| token.expr_type == *expr_type)).unwrap_or(true)
+            && template.this.as_ref().and_then(|token| this.map(|expr_type| token.expr_type == *expr_type)).unwrap_or(true)
             && template.args.len() == args.len()
             && template.args.iter().map(|arg| arg.expr_type.clone())
             .zip(args.iter()).map(|(left, right)| left == right.clone()).all(|b| b))
@@ -238,10 +256,10 @@ impl TypeChecker {
     fn check_declaration(&mut self, decl: Decl, environment: &TypeDeclarationEnvironment) -> TypedDecl {
         match decl {
             Decl::Template { name, this, args, return_type, expr } => {
-                let typed_expr = self.check_template_expr(expr, vec![return_type], environment);
+                let typed_expr = self.check_template_expr(expr, false, vec![return_type.clone()], environment);
                 let expr_type = typed_expr.get_type();
 
-                if !expr_type.can_coerce_to(return_type.clone()) {
+                if !expr_type.can_coerce_to(&return_type) {
                     self.error_at_with_context(*name.start(), "Template expression cannot be converted to the template's return type", vec![
                         ("Expected", Expr::BuiltinType(return_type.clone())),
                         ("Found", Expr::BuiltinType(expr_type.clone()))
@@ -251,17 +269,17 @@ impl TypeChecker {
                 let final_return_type = if return_type == ExprType::Any { expr_type } else { return_type };
 
                 let template_decl = Rc::new(RefCell::new(TypedTemplateDecl {
-                    name, this, args, return_type: final_return_type.clone(), expr: typed_expr,
+                    name: name.clone(), this, args, return_type: final_return_type.clone(), expr: typed_expr,
                 }));
 
                 self.environment.borrow_mut().put_template(name.source().to_owned(), Rc::clone(&template_decl), final_return_type);
                 TypedDecl::Template(template_decl)
             },
             Decl::Variable { name, expr_type, expr, kind } => {
-                let typed_expr = self.check_expr(expr, vec![expr_type.clone()], environment);
+                let typed_expr = self.check_expr(expr, false, vec![expr_type.clone()], environment);
                 let actual_expr_type = typed_expr.get_type();
 
-                if !actual_expr_type.can_coerce_to(expr_type.clone()) {
+                if !actual_expr_type.can_coerce_to(&expr_type) {
                     self.error_at_with_context(*name.start(), "Variable expression cannot be converted to the declared type", vec![
                         ("Expected", Expr::BuiltinType(expr_type.clone())),
                         ("Found", Expr::BuiltinType(actual_expr_type.clone()))
@@ -271,7 +289,7 @@ impl TypeChecker {
                 let final_expr_type = if expr_type == ExprType::Any { actual_expr_type } else { expr_type };
 
                 let variable = Rc::new(RefCell::new(TypedVariableDecl {
-                    name,
+                    name: name.clone(),
                     expr_type: final_expr_type.clone(),
                     expr: typed_expr,
                     kind,
@@ -291,7 +309,7 @@ impl TypeChecker {
                 self.environment = current_environment;
 
                 let module = Rc::new(RefCell::new(TypedModuleDecl {
-                    name,
+                    name: name.clone(),
                     declarations: typed_declarations,
                 }));
 
@@ -312,19 +330,19 @@ impl TypeChecker {
         }
     }
 
-    fn check_template_expr(&mut self, expr: TemplateExpr, type_hints: Vec<ExprType>, _environment: &TypeDeclarationEnvironment) -> TypedTemplateExpr {
+    fn check_template_expr(&mut self, expr: TemplateExpr, static_expr: bool, type_hints: Vec<ExprType>, _environment: &TypeDeclarationEnvironment) -> TypedTemplateExpr {
         match expr {
             TemplateExpr::Block { expressions, last } => {
                 TypedTemplateExpr::Block {
                     expressions: expressions.into_iter()
-                        .map(|expr| self.check_template_expr(expr, vec![ExprType::Any], _environment)).collect(),
-                    last: Box::new(self.check_template_expr(*last, type_hints, _environment)),
+                        .map(|expr| self.check_template_expr(expr, static_expr, vec![ExprType::Any], _environment)).collect(),
+                    last: Box::new(self.check_template_expr(*last, static_expr, type_hints, _environment)),
                 }
             },
             TemplateExpr::If { token, condition, then, otherwise } => {
-                let typed_condition = self.check_expr(condition, vec![ExprType::Boolean], _environment);
-                let typed_then = self.check_template_expr(*then, type_hints.clone(), _environment);
-                let typed_otherwise = self.check_template_expr(*otherwise, type_hints, _environment);
+                let typed_condition = self.check_expr(condition, true, vec![ExprType::Boolean], _environment);
+                let typed_then = self.check_template_expr(*then, static_expr, type_hints.clone(), _environment);
+                let typed_otherwise = self.check_template_expr(*otherwise, static_expr, type_hints, _environment);
 
                 if typed_condition.get_type() != ExprType::Boolean {
                     self.error_at(*token.start(), "Condition of 'if' expression must be of type 'boolean'", false);
@@ -340,28 +358,77 @@ impl TypeChecker {
                 TypedTemplateExpr::If { token, condition: typed_condition,
                     then: Box::new(typed_then), otherwise: Box::new(typed_otherwise), result_type }
             },
-            TemplateExpr::Simple(expr) => TypedTemplateExpr::Simple(self.check_expr(expr, type_hints, _environment)),
+            TemplateExpr::Simple(expr) => TypedTemplateExpr::Simple(self.check_expr(expr, static_expr, type_hints, _environment)),
         }
     }
 
-    fn check_expr(&mut self, expr: Expr, _type_hints: Vec<ExprType>, _environment: &TypeDeclarationEnvironment) -> TypedExpr {
+    fn check_expr(&mut self, expr: Expr, static_expr: bool, _type_hints: Vec<ExprType>, _environment: &TypeDeclarationEnvironment) -> TypedExpr {
         match expr {
             Expr::ConstantFloat(value) => TypedExpr::ConstantFloat(value),
             Expr::ConstantInt(value) => TypedExpr::ConstantInt(value),
             Expr::ConstantBoolean(value) => TypedExpr::ConstantBoolean(value),
             Expr::ConstantString(value) => TypedExpr::ConstantString(value),
             // TODO implement type-checking for expressions
-            Expr::Identifier(token) => {},
-            Expr::UnaryOperator { operator, expr } => {},
-            Expr::BinaryOperator { left, operator, right } => {},
-            Expr::FunctionCall { callee, token, args } => {},
-            Expr::Member { receiver, name } => {},
-            Expr::Index { receiver, operator, index } => {},
-            Expr::BuiltinFunctionCall { name, args } => {},
+            Expr::Identifier(token) => {
+                TypedExpr::Error
+            },
+            Expr::UnaryOperator { operator, expr } => {
+                TypedExpr::Error
+            },
+            Expr::BinaryOperator { left, operator, right } => {
+                TypedExpr::Error
+            },
+            Expr::FunctionCall { callee, token, args } => {
+                TypedExpr::Error
+            },
+            Expr::Member { receiver, name } => {
+                TypedExpr::Error
+            },
+            Expr::Index { receiver, operator, index } => {
+                TypedExpr::Error
+            },
+            Expr::BuiltinFunctionCall { name, args } => {
+                TypedExpr::Error
+            },
             Expr::BuiltinType(ty) => TypedExpr::BuiltinType(ty),
-            Expr::Object(fields) => {},
-            Expr::Array(elements) => {},
+            Expr::Object(fields) => {
+                TypedExpr::Object(fields.into_iter().map(|(token, expr)|
+                    (token, self.check_expr(expr, static_expr, vec![], environment)))
+                    .collect())
+            },
+            Expr::Array(elements) => {
+                TypedExpr::Array(elements.into_iter()
+                    .map(|expr| self.check_expr(expr, static_expr, vec![], _environment))
+                    .collect())
+            },
             Expr::Error => TypedExpr::Error,
+        }
+    }
+
+    fn resolve_reference(name: &Token, type_hints: Vec<ExprType>, environment: &TypeEnvironment, declaration_environment: &TypeDeclarationEnvironment) -> Option<()> {
+        todo!()
+    }
+
+    fn resolve_template(name: &Token, this: Option<ExprType>, args: Vec<ExprType>, return_type: ExprType, environment: &TypeEnvironment, declaration_environment: &TypeDeclarationEnvironment) -> Option<Rc<RefCell<TypedTemplateDecl>>> {
+        match declaration_environment.find_template(name.source(), this.as_ref(), &args) {
+            None => {
+                environment.find_template(name.source(), this.as_ref(), &args, true, true)
+                    .filter(|(_, expr_type)| expr_type.can_coerce_to(&return_type))
+                    .map(|(template, _)| template)
+            },
+            Some(_declaration) => {
+                match environment.find_template(name.source(), this.as_ref(), &args, true, false) {
+                    None => {
+                        todo!("Forward reference")
+                        // need to return declaration, but that doesn't include
+                        // the typed AST because it wasn't type-checked yet
+                    },
+                    Some((template, expr_type)) =>
+                        if expr_type.can_coerce_to(&return_type) {
+                            Some(template)
+                        } else { None },
+                }
+            },
         }
     }
 

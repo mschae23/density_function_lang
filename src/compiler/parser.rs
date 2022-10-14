@@ -23,6 +23,7 @@ lazy_static! {
         TokenType::Boolean,
         TokenType::String,
         TokenType::Object, TokenType::Array,
+        TokenType::Module,
         TokenType::Underscore,
     ];
 }
@@ -123,6 +124,7 @@ impl<'source> Parser<'source> {
                 TokenType::String => ExprType::String,
                 TokenType::Object => ExprType::Object,
                 TokenType::Array => ExprType::Array,
+                TokenType::Module => ExprType::Module,
                 TokenType::Underscore => ExprType::Any,
                 _ => ExprType::Any,
             }

@@ -177,7 +177,7 @@ impl Debug for Expr {
                     .map(|expr| format!("{:?}", expr))
                     .collect::<Vec<String>>().join(", "))
             },
-            Expr::BuiltinType(element_type) => write!(f, "builtin.type.{:?}", element_type),
+            Expr::BuiltinType(element_type) => write!(f, "{:?}", element_type),
 
             // Copied from Debug for JsonElement
             Expr::Object(fields) => write!(f, "{{{}}}", fields.iter()

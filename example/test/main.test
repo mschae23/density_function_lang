@@ -1,5 +1,5 @@
 export zero = 0.0;
 
-inline five = 5.0;
+export five = 5.0;
 
-export added = zero + 5.0;
+// export added = zero + 5.0;

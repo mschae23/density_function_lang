@@ -7,9 +7,11 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use clap::Parser as ClapParser;
 use crate::compiler::ast::simple::{Decl, ExportFunction};
+use crate::compiler::ast::typed::TypedDecl;
 use crate::compiler::compiler::Compiler;
 use crate::compiler::lexer::Lexer;
 use crate::compiler::parser::Parser;
+use crate::compiler::type_checker::TypeChecker;
 use crate::compiler::writer::JsonWriter;
 
 #[derive(ClapParser, Debug)]
@@ -46,13 +48,26 @@ pub fn parse(path: &Path) -> Result<Option<Vec<Decl>>, std::io::Error> {
 type CompileResult = Option<((), Compiler)>;
 
 pub fn compile(path: PathBuf, target_dir: PathBuf, config: Rc<Config>) -> Result<CompileResult, std::io::Error> {
-    let statements = match parse(&path)? {
+    let declarations = match parse(&path)? {
         Some(result) => result,
         None => return Ok(None),
     };
 
+    let mut type_checker = TypeChecker::new(path.clone(), target_dir.clone(), Rc::clone(&config));
+    let declarations = type_checker.check_types(declarations);
+
+    if type_checker.had_error() {
+        return Ok(None);
+    }
+
+    eprintln!();
+
+    for decl in &declarations {
+        eprintln!("{:?}", decl);
+    }
+
     let mut compiler = Compiler::new(path, target_dir, config);
-    // compiler.compile(statements);
+    // compiler.compile(declarations);
     // let functions = compiler.collect_exports();
 
     if compiler.had_error() {

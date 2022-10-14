@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::fmt::{Debug, Formatter};
 use std::rc::Rc;
+use clap::arg;
 use crate::compiler::ast::simple::VariableType;
 use crate::compiler::lexer::Token;
 
@@ -10,6 +11,11 @@ pub enum ExprType {
     Float, Int, Boolean, String,
     Object, Array,
     Type,
+    Template {
+        this: Option<ExprType>,
+        args: Vec<ExprType>,
+        return_type: ExprType,
+    },
     Module,
     Any,
     Error,
@@ -17,20 +23,20 @@ pub enum ExprType {
 }
 
 impl ExprType {
-    pub fn can_coerce_to(&self, other: ExprType) -> bool {
-        if *self == ExprType::Error || other == ExprType::Error {
+    pub fn can_coerce_to(&self, other: &ExprType) -> bool {
+        if *self == ExprType::Error || *other == ExprType::Error {
             return false;
         }
 
-        if *self == other {
+        if *self == *other {
             return true;
         }
 
-        if other == ExprType::Any {
+        if *other == ExprType::Any {
             return true;
         }
 
-        if *self == ExprType::Int && other == ExprType::Float {
+        if *self == ExprType::Int && *other == ExprType::Float {
             return true;
         }
 
@@ -48,8 +54,14 @@ impl Debug for ExprType {
             ExprType::Object => write!(f, "object"),
             ExprType::Array => write!(f, "array"),
             ExprType::Type => write!(f, "type"),
+            ExprType::Template { this, args, return_type } =>
+                write!(f, "({}): {:?}", this.iter()
+                    .map(|this_type| format!("this: {:?}", this_type))
+                    .chain(args.iter().map(|arg_type| format!("{:?}", arg_type)))
+                    .fold(String::new(), |acc, arg| format!("{}, {}", acc, arg)), return_type),
             ExprType::Module => write!(f, "module"),
-            ExprType::Any | ExprType::Error => write!(f, "_"),
+            ExprType::Any => write!(f, "_"),
+            ExprType::Error => write!(f, "error"),
         }
     }
 }
