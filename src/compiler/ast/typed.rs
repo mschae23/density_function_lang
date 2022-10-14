@@ -78,6 +78,27 @@ impl Debug for TypedToken {
     }
 }
 
+#[derive(Clone, PartialEq, Debug)]
+pub struct TemplateDeclaration {
+    pub name: Token,
+    pub this: Option<TypedToken>,
+    pub args: Vec<TypedToken>,
+    pub return_type: ExprType,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct ModuleDeclaration {
+    pub name: Token,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct VariableDeclaration {
+    pub name: Token,
+    pub kind: VariableType,
+    pub expr_type: ExprType,
+}
+
+
 #[derive(Clone, PartialEq)]
 pub struct TypedTemplateDecl {
     pub name: Token,

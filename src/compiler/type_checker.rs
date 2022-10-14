@@ -6,12 +6,12 @@ use std::rc::{Rc, Weak};
 use crate::compiler::ast::simple::{Expr, TemplateExpr, VariableType};
 use crate::compiler::lexer::{Token, TokenPos};
 use crate::{Config, Decl};
-use crate::compiler::ast::typed::{ExprType, TypedDecl, TypedExpr, TypedModuleDecl, TypedTemplateDecl, TypedTemplateExpr, TypedToken, TypedVariableDecl};
+use crate::compiler::ast::typed::{ExprType, ModuleDeclaration, TemplateDeclaration, TypedDecl, TypedExpr, TypedModuleDecl, TypedTemplateDecl, TypedTemplateExpr, TypedToken, TypedVariableDecl, VariableDeclaration};
 
 struct TypeEnvironment {
-    templates: Vec<(String, Rc<RefCell<TypedTemplateDecl>>, ExprType)>,
-    modules: HashMap<String, Rc<RefCell<TypedModuleDecl>>>,
-    variables: HashMap<String, (Rc<RefCell<TypedVariableDecl>>, ExprType)>,
+    templates: Vec<Rc<RefCell<TemplateDeclaration>>>,
+    modules: HashMap<String, Rc<RefCell<ModuleDeclaration>>>,
+    variables: HashMap<String, Rc<RefCell<VariableDeclaration>>>,
 
     parent: Option<Weak<RefCell<TypeEnvironment>>>,
     children: Vec<Rc<RefCell<TypeEnvironment>>>,
@@ -38,12 +38,12 @@ impl TypeEnvironment {
         }))
     }
 
-    pub fn contains(&self, name: &str) -> bool {
+    /* pub fn contains(&self, name: &str) -> bool {
         self.modules.contains_key(name) || self.variables.contains_key(name)
         || self.templates.iter().any(|(template_name, _, _)| *template_name == *name)
-    }
+    } */
 
-    fn compare_types(&self, expected: &ExprType, found: &ExprType, allow_coerce: bool) -> bool {
+    pub fn compare_types(&self, expected: &ExprType, found: &ExprType, allow_coerce: bool) -> bool {
         if allow_coerce {
             found.can_coerce_to(expected)
         } else {
@@ -51,18 +51,35 @@ impl TypeEnvironment {
         }
     }
 
-    pub fn find_template(&self, name: &str, this: Option<&ExprType>, args: &[ExprType], allow_coerce: bool, recurse_to_parent: bool) -> Option<(Rc<RefCell<TypedTemplateDecl>>, ExprType)> {
-        let mut filtered = self.templates.iter().filter(|(template_name, template, _)|
-            *template_name == *name
+    fn template_predicate(&self, template: &Rc<RefCell<TemplateDeclaration>>, this: Option<&ExprType>, args: &[ExprType], allow_coerce: bool) -> bool {
+        template.borrow().this.as_ref().and_then(|token| this.map(|expr_type| self.compare_types(&token.expr_type, expr_type, allow_coerce))).unwrap_or(true)
+            && template.borrow().args.iter().map(|arg| arg.expr_type.clone())
+            .zip(args.iter()).map(|(left, right)| self.compare_types(&left, right, allow_coerce)).all(|b| b)
+    }
+
+    pub fn find_template(&self, name: &str, this: Option<&ExprType>, args: &[ExprType], allow_coerce: bool, recurse_to_parent: bool) -> Option<Option<Rc<RefCell<TemplateDeclaration>>>> {
+        let mut filtered = self.templates.iter().filter(|template|
+            *template.borrow().name.source() == *name
             && template.borrow().this.is_some() == this.is_some()
             && template.borrow().args.len() == args.len());
 
+        let mut filtered2 = filtered.clone();
+
         let found = filtered
-            .find(|(template_name, template, _)|
-                template.borrow().this.as_ref().and_then(|token| this.map(|expr_type| self.compare_types(&token.expr_type, expr_type, allow_coerce))).unwrap_or(true)
-                && template.borrow().args.iter().map(|arg| arg.expr_type.clone())
-                    .zip(args.iter()).map(|(left, right)| self.compare_types(&left, right, allow_coerce)).all(|b| b))
-            .map(|(name, decl, expr_type)| (Rc::clone(decl), expr_type.clone()));
+            .find(|template| self.template_predicate(template, this, args, false) )
+            .map(Rc::clone).map(Some);
+
+        let found = if allow_coerce && found.is_none() {
+            // Will have to to the first filter again, unfortunately
+            let mut suitable: Vec<Rc<RefCell<TemplateDeclaration>>> = filtered2.filter(|&template| self.template_predicate(template, this, args, allow_coerce))
+                .map(Rc::clone).collect();
+
+            if suitable.len() > 1 {
+                Some(None)
+            } else {
+                suitable.pop().map(Some) // Will always be the first element, or None (due to len > 1 check)
+            }
+        } else { found };
 
         if recurse_to_parent {
             found.or_else(|| self.parent.as_ref().and_then(|parent| parent.upgrade())
@@ -72,102 +89,46 @@ impl TypeEnvironment {
         }
     }
 
-    pub fn put_template(&mut self, name: String, decl: Rc<RefCell<TypedTemplateDecl>>, expr_type: ExprType) -> bool {
-        if self.find_template(&name,
-            decl.borrow().this.as_ref().map(|token| &token.expr_type),
-        &decl.borrow().args.iter().map(|token| token.expr_type.clone()).collect::<Vec<ExprType>>(), false, false).is_some() {
-            false
+    pub fn find_module(&self, name: &str, recurse_to_parent: bool) -> Option<Rc<RefCell<ModuleDeclaration>>> {
+        let found = self.modules.get(name).map(Rc::clone);
+
+        if recurse_to_parent {
+            found.or_else(|| self.parent.as_ref().and_then(|parent| parent.upgrade())
+                .and_then(|parent| parent.borrow().find_module(name, recurse_to_parent)))
         } else {
-            self.templates.push((name, decl, expr_type));
-            true
+            found
         }
     }
 
-    pub fn put_variable(&mut self, name: String, decl: Rc<RefCell<TypedVariableDecl>>, expr_type: ExprType) -> bool {
-        match self.variables.entry(name) {
-            Entry::Occupied(_) => false,
-            Entry::Vacant(entry) => {
-                entry.insert((decl, expr_type));
-                true
-            },
+    pub fn find_variable(&self, name: &str, recurse_to_parent: bool) -> Option<Rc<RefCell<VariableDeclaration>>> {
+        let found = self.variables.get(name).map(Rc::clone);
+
+        if recurse_to_parent {
+            found.or_else(|| self.parent.as_ref().and_then(|parent| parent.upgrade())
+                .and_then(|parent| parent.borrow().find_variable(name, recurse_to_parent)))
+        } else {
+            found
         }
-    }
-
-    pub fn put_module(&mut self, name: String, decl: Rc<RefCell<TypedModuleDecl>>) -> bool {
-        match self.modules.entry(name) {
-            Entry::Occupied(_) => false,
-            Entry::Vacant(entry) => {
-                entry.insert(decl);
-                true
-            },
-        }
-    }
-
-    pub fn add_child(&mut self, environment: Rc<RefCell<TypeEnvironment>>) {
-        self.children.push(environment);
-    }
-}
-
-#[derive(Clone, PartialEq, Debug)]
-struct TemplateDeclaration {
-    pub name: Token,
-    pub this: Option<TypedToken>,
-    pub args: Vec<TypedToken>,
-    pub return_type: ExprType,
-}
-
-#[derive(Clone, PartialEq, Debug)]
-struct ModuleDeclaration {
-    pub name: Token,
-}
-
-#[derive(Clone, PartialEq, Debug)]
-struct VariableDeclaration {
-    pub name: Token,
-    pub kind: VariableType,
-    pub expr_type: ExprType,
-}
-
-struct TypeDeclarationEnvironment {
-    templates: Vec<TemplateDeclaration>,
-    modules: HashMap<String, ModuleDeclaration>,
-    variables: HashMap<String, VariableDeclaration>,
-}
-
-impl TypeDeclarationEnvironment {
-    pub fn new() -> TypeDeclarationEnvironment {
-        TypeDeclarationEnvironment {
-            templates: Vec::new(),
-            modules: HashMap::new(),
-            variables: HashMap::new(),
-        }
-    }
-
-    pub fn find_template(&self, name: &str, this: Option<&ExprType>, args: &[ExprType]) -> Option<&TemplateDeclaration> {
-        self.templates.iter().find(|template| *template.name.source() == *name
-            && template.this.is_some() == this.is_some()
-            && template.this.as_ref().and_then(|token| this.map(|expr_type| token.expr_type == *expr_type)).unwrap_or(true)
-            && template.args.len() == args.len()
-            && template.args.iter().map(|arg| arg.expr_type.clone())
-            .zip(args.iter()).map(|(left, right)| left == right.clone()).all(|b| b))
-    }
-
-    pub fn find_module(&self, name: &str) -> Option<&ModuleDeclaration> {
-        self.modules.get(name)
-    }
-
-    pub fn find_variable(&self, name: &str) -> Option<&VariableDeclaration> {
-        self.variables.get(name)
     }
 
     pub fn put_template(&mut self, name: Token, this: Option<TypedToken>, args: Vec<TypedToken>, return_type: ExprType) -> bool {
         if self.find_template(name.source(),
             this.as_ref().map(|token| &token.expr_type),
-            &args.iter().map(|token| token.expr_type.clone()).collect::<Vec<ExprType>>()).is_some() {
+        &args.iter().map(|token| token.expr_type.clone()).collect::<Vec<ExprType>>(), false, false).is_some() {
             false
         } else {
-            self.templates.push(TemplateDeclaration { name, this, args, return_type });
+            self.templates.push(Rc::new(RefCell::new(TemplateDeclaration { name, this, args, return_type })));
             true
+        }
+    }
+
+    pub fn put_variable(&mut self, name: Token, expr_type: ExprType, kind: VariableType) -> bool {
+        match self.variables.entry(name.source().to_owned()) {
+            Entry::Occupied(_) => false,
+            Entry::Vacant(entry) => {
+                entry.insert(Rc::new(RefCell::new(VariableDeclaration { name, expr_type, kind })));
+                true
+            },
         }
     }
 
@@ -175,20 +136,14 @@ impl TypeDeclarationEnvironment {
         match self.modules.entry(name.source().to_owned()) {
             Entry::Occupied(_) => false,
             Entry::Vacant(entry) => {
-                entry.insert(ModuleDeclaration { name });
+                entry.insert(Rc::new(RefCell::new(ModuleDeclaration { name })));
                 true
             },
         }
     }
 
-    pub fn put_variable(&mut self, name: Token, kind: VariableType, expr_type: ExprType) -> bool {
-        match self.variables.entry(name.source().to_owned()) {
-            Entry::Occupied(_) => false,
-            Entry::Vacant(entry) => {
-                entry.insert(VariableDeclaration { name, kind, expr_type });
-                true
-            },
-        }
+    pub fn add_child(&mut self, environment: Rc<RefCell<TypeEnvironment>>) {
+        self.children.push(environment);
     }
 }
 
@@ -215,22 +170,20 @@ impl TypeChecker {
     }
 
     pub fn check_types(&mut self, declarations: Vec<Decl>) -> Vec<TypedDecl> {
-        let mut environment = TypeDeclarationEnvironment::new();
-
         for decl in &declarations {
-            self.declare_declaration(decl, &mut environment);
+            self.declare_declaration(decl);
         }
 
         let mut typed_decls = Vec::new();
 
         for decl in declarations {
-            typed_decls.push(self.check_declaration(decl, &environment));
+            typed_decls.push(self.check_declaration(decl));
         }
 
         typed_decls
     }
 
-    fn declare_declaration(&mut self, decl: &Decl, environment: &mut TypeDeclarationEnvironment) {
+    fn declare_declaration(&mut self, decl: &Decl) {
         match decl {
             Decl::Template { name, this, args, return_type, expr: _ } => {
                 if !environment.put_template(name.clone(), this.clone(), args.clone(), return_type.clone()) {
@@ -253,10 +206,10 @@ impl TypeChecker {
         }
     }
 
-    fn check_declaration(&mut self, decl: Decl, environment: &TypeDeclarationEnvironment) -> TypedDecl {
+    fn check_declaration(&mut self, decl: Decl) -> TypedDecl {
         match decl {
             Decl::Template { name, this, args, return_type, expr } => {
-                let typed_expr = self.check_template_expr(expr, false, vec![return_type.clone()], environment);
+                let typed_expr = self.check_template_expr(expr, false, vec![return_type.clone()]);
                 let expr_type = typed_expr.get_type();
 
                 if !expr_type.can_coerce_to(&return_type) {
@@ -269,14 +222,13 @@ impl TypeChecker {
                 let final_return_type = if return_type == ExprType::Any { expr_type } else { return_type };
 
                 let template_decl = Rc::new(RefCell::new(TypedTemplateDecl {
-                    name: name.clone(), this, args, return_type: final_return_type.clone(), expr: typed_expr,
+                    name, this, args, return_type: final_return_type, expr: typed_expr,
                 }));
 
-                self.environment.borrow_mut().put_template(name.source().to_owned(), Rc::clone(&template_decl), final_return_type);
                 TypedDecl::Template(template_decl)
             },
             Decl::Variable { name, expr_type, expr, kind } => {
-                let typed_expr = self.check_expr(expr, false, vec![expr_type.clone()], environment);
+                let typed_expr = self.check_expr(expr, false, vec![expr_type.clone()]);
                 let actual_expr_type = typed_expr.get_type();
 
                 if !actual_expr_type.can_coerce_to(&expr_type) {
@@ -289,13 +241,12 @@ impl TypeChecker {
                 let final_expr_type = if expr_type == ExprType::Any { actual_expr_type } else { expr_type };
 
                 let variable = Rc::new(RefCell::new(TypedVariableDecl {
-                    name: name.clone(),
-                    expr_type: final_expr_type.clone(),
+                    name,
+                    expr_type: final_expr_type,
                     expr: typed_expr,
                     kind,
                 }));
 
-                self.environment.borrow_mut().put_variable(name.source().to_owned(), Rc::clone(&variable), final_expr_type);
                 TypedDecl::Variable(variable)
             },
             Decl::Module { name, statements: declarations } => {
@@ -303,17 +254,16 @@ impl TypeChecker {
                 let child_environment = TypeEnvironment::new_with_parent(Rc::clone(&current_environment));
                 self.environment = Rc::clone(&child_environment);
 
-                let typed_declarations = declarations.into_iter().map(|decl| self.check_declaration(decl, environment)).collect();
+                let typed_declarations = declarations.into_iter().map(|decl| self.check_declaration(decl)).collect();
 
                 current_environment.borrow_mut().add_child(child_environment);
                 self.environment = current_environment;
 
                 let module = Rc::new(RefCell::new(TypedModuleDecl {
-                    name: name.clone(),
+                    name,
                     declarations: typed_declarations,
                 }));
 
-                self.environment.borrow_mut().put_module(name.source().to_owned(), Rc::clone(&module));
                 TypedDecl::Module(module)
             }
             Decl::Include { path, declarations: _ } => {
@@ -330,19 +280,19 @@ impl TypeChecker {
         }
     }
 
-    fn check_template_expr(&mut self, expr: TemplateExpr, static_expr: bool, type_hints: Vec<ExprType>, _environment: &TypeDeclarationEnvironment) -> TypedTemplateExpr {
+    fn check_template_expr(&mut self, expr: TemplateExpr, static_expr: bool, type_hints: Vec<ExprType>) -> TypedTemplateExpr {
         match expr {
             TemplateExpr::Block { expressions, last } => {
                 TypedTemplateExpr::Block {
                     expressions: expressions.into_iter()
-                        .map(|expr| self.check_template_expr(expr, static_expr, vec![ExprType::Any], _environment)).collect(),
-                    last: Box::new(self.check_template_expr(*last, static_expr, type_hints, _environment)),
+                        .map(|expr| self.check_template_expr(expr, static_expr, vec![ExprType::Any])).collect(),
+                    last: Box::new(self.check_template_expr(*last, static_expr, type_hints)),
                 }
             },
             TemplateExpr::If { token, condition, then, otherwise } => {
-                let typed_condition = self.check_expr(condition, true, vec![ExprType::Boolean], _environment);
-                let typed_then = self.check_template_expr(*then, static_expr, type_hints.clone(), _environment);
-                let typed_otherwise = self.check_template_expr(*otherwise, static_expr, type_hints, _environment);
+                let typed_condition = self.check_expr(condition, true, vec![ExprType::Boolean]);
+                let typed_then = self.check_template_expr(*then, static_expr, type_hints.clone());
+                let typed_otherwise = self.check_template_expr(*otherwise, static_expr, type_hints);
 
                 if typed_condition.get_type() != ExprType::Boolean {
                     self.error_at(*token.start(), "Condition of 'if' expression must be of type 'boolean'", false);
@@ -358,11 +308,11 @@ impl TypeChecker {
                 TypedTemplateExpr::If { token, condition: typed_condition,
                     then: Box::new(typed_then), otherwise: Box::new(typed_otherwise), result_type }
             },
-            TemplateExpr::Simple(expr) => TypedTemplateExpr::Simple(self.check_expr(expr, static_expr, type_hints, _environment)),
+            TemplateExpr::Simple(expr) => TypedTemplateExpr::Simple(self.check_expr(expr, static_expr, type_hints)),
         }
     }
 
-    fn check_expr(&mut self, expr: Expr, static_expr: bool, _type_hints: Vec<ExprType>, _environment: &TypeDeclarationEnvironment) -> TypedExpr {
+    fn check_expr(&mut self, expr: Expr, static_expr: bool, _type_hints: Vec<ExprType>) -> TypedExpr {
         match expr {
             Expr::ConstantFloat(value) => TypedExpr::ConstantFloat(value),
             Expr::ConstantInt(value) => TypedExpr::ConstantInt(value),
@@ -393,43 +343,45 @@ impl TypeChecker {
             Expr::BuiltinType(ty) => TypedExpr::BuiltinType(ty),
             Expr::Object(fields) => {
                 TypedExpr::Object(fields.into_iter().map(|(token, expr)|
-                    (token, self.check_expr(expr, static_expr, vec![], environment)))
+                    (token, self.check_expr(expr, static_expr, vec![])))
                     .collect())
             },
             Expr::Array(elements) => {
                 TypedExpr::Array(elements.into_iter()
-                    .map(|expr| self.check_expr(expr, static_expr, vec![], _environment))
+                    .map(|expr| self.check_expr(expr, static_expr, vec![]))
                     .collect())
             },
             Expr::Error => TypedExpr::Error,
         }
     }
 
-    fn resolve_reference(name: &Token, type_hints: Vec<ExprType>, environment: &TypeEnvironment, declaration_environment: &TypeDeclarationEnvironment) -> Option<()> {
+    fn resolve_reference(&mut self, name: &Token, type_hints: Vec<ExprType>) -> Option<()> {
+        for type_hint in type_hints.into_iter() {
+        }
+
         todo!()
     }
 
-    fn resolve_template(name: &Token, this: Option<ExprType>, args: Vec<ExprType>, return_type: ExprType, environment: &TypeEnvironment, declaration_environment: &TypeDeclarationEnvironment) -> Option<Rc<RefCell<TypedTemplateDecl>>> {
-        match declaration_environment.find_template(name.source(), this.as_ref(), &args) {
-            None => {
-                environment.find_template(name.source(), this.as_ref(), &args, true, true)
-                    .filter(|(_, expr_type)| expr_type.can_coerce_to(&return_type))
-                    .map(|(template, _)| template)
+    fn resolve_template(&mut self, name: &Token, this: Option<ExprType>, args: Vec<ExprType>, return_type: ExprType) -> Option<Rc<RefCell<TemplateDeclaration>>> {
+        match self.environment.borrow().find_template(name.source(), this.as_ref(), &args, true, true) {
+            None => None,
+            Some(None) => {
+                self.error_at_with_context(*name.start(), "Ambiguous reference to template", vec![
+                    ("Expected", Expr::BuiltinType(ExprType::Template { this, args, return_type })),
+                ], false);
+                None
             },
-            Some(_declaration) => {
-                match environment.find_template(name.source(), this.as_ref(), &args, true, false) {
-                    None => {
-                        todo!("Forward reference")
-                        // need to return declaration, but that doesn't include
-                        // the typed AST because it wasn't type-checked yet
-                    },
-                    Some((template, expr_type)) =>
-                        if expr_type.can_coerce_to(&return_type) {
-                            Some(template)
-                        } else { None },
-                }
-            },
+            Some(result) =>
+                result.filter(|template| template.borrow().return_type.can_coerce_to(&return_type))
         }
+    }
+
+    fn resolve_module(&self, name: &Token) -> Option<Rc<RefCell<ModuleDeclaration>>> {
+        self.environment.borrow().find_module(name.source(), true)
+    }
+
+    fn resolve_variable(&self, name: &Token) -> Option<Rc<RefCell<VariableDeclaration>>> {
+        self.environment.borrow().find_variable(name.source(), true)
     }
 
     fn environment(&self) -> Rc<RefCell<TypeEnvironment>> {
