@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::fmt::{Debug, Formatter};
 use std::rc::Rc;
-use crate::compiler::ast::simple::{JsonElementType, VariableType};
+use crate::compiler::ast::simple::VariableType;
 use crate::compiler::lexer::Token;
 
 #[derive(Clone, PartialEq, Eq)]
@@ -14,6 +14,28 @@ pub enum ExprType {
     Any,
     Error,
     // @formatter:on
+}
+
+impl ExprType {
+    pub fn can_coerce_to(&self, other: ExprType) -> bool {
+        if *self == ExprType::Error || other == ExprType::Error {
+            return false;
+        }
+
+        if *self == other {
+            return true;
+        }
+
+        if other == ExprType::Any {
+            return true;
+        }
+
+        if *self == ExprType::Int && other == ExprType::Float {
+            return true;
+        }
+
+        false
+    }
 }
 
 impl Debug for ExprType {
@@ -49,6 +71,7 @@ pub struct TypedTemplateDecl {
     pub name: Token,
     pub this: Option<TypedToken>,
     pub args: Vec<TypedToken>,
+    pub return_type: ExprType,
     pub expr: TypedTemplateExpr,
 }
 
@@ -73,6 +96,7 @@ impl Debug for TypedModuleDecl {
 #[derive(Clone, PartialEq)]
 pub struct TypedVariableDecl {
     pub name: Token,
+    pub expr_type: ExprType,
     pub expr: TypedExpr,
     pub kind: VariableType,
 }

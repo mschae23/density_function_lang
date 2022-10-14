@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::fmt::{Debug, Formatter};
 use std::path::PathBuf;
 use std::rc::{Rc, Weak};
-use crate::compiler::ast::typed::ExprType;
+use crate::compiler::ast::typed::{ExprType, TypedToken};
 
 use crate::compiler::lexer::Token;
 
@@ -27,13 +27,15 @@ impl Debug for VariableType {
 pub enum Decl {
     Template {
         name: Token,
-        this: Option<Token>,
-        args: Vec<Token>,
+        this: Option<TypedToken>,
+        args: Vec<TypedToken>,
+        return_type: ExprType,
         expr: TemplateExpr,
     },
 
     Variable {
         name: Token,
+        expr_type: ExprType,
         expr: Expr,
         kind: VariableType,
     },
@@ -57,14 +59,14 @@ pub enum Decl {
 impl Debug for Decl {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Decl::Template { name, this, args, expr } =>
+            Decl::Template { name, this, args, expr, .. } =>
                 write!(f, "template {}({}{}) = {:?};", name.source(),
-                       this.as_ref().map(|this| format!("{}, ", this.source())).unwrap_or_else(String::new),
+                       this.as_ref().map(|this| format!("{}, ", this.token.source())).unwrap_or_else(String::new),
                        args.iter()
-                           .map(|arg| arg.source().to_owned())
+                           .map(|arg| arg.token.source().to_owned())
                            .collect::<Vec<String>>().join(", "), expr),
 
-            Decl::Variable { name, expr, kind } =>
+            Decl::Variable { name, expr, kind, .. } =>
                 write!(f, "{:?} {} = {:?};", kind, name.source(), expr),
 
             Decl::Module { name, statements } =>

@@ -48,8 +48,8 @@ pub enum TokenType {
     Or, ShortcircuitOr,
 
     Identifier, Underscore,
-    Int, Float,
-    String,
+    LiteralInt, LiteralFloat,
+    LiteralString,
 
     // Keywords
     Builtin,
@@ -58,6 +58,7 @@ pub enum TokenType {
     If, Else,
     Module, Include, Import,
     True, False,
+    Int, Float, Boolean, String, Object, Array,
 
     // EOF
     Eof,
@@ -97,7 +98,7 @@ impl Display for Token {
         match self.token_type {
             TokenType::None => f.write_str("None"),
             TokenType::Eof => f.write_str("Eof"),
-            TokenType::String => write!(f, "`\"{}\"`", self.source),
+            TokenType::LiteralString => write!(f, "`\"{}\"`", self.source),
             _ => write!(f, "`{}`", self.source),
         }
     }
@@ -281,7 +282,7 @@ impl<'source> Lexer<'source> {
 
             // Don't add leading and trailing '"' characters to token
             Ok(Token {
-                token_type: TokenType::String,
+                token_type: TokenType::LiteralString,
                 source: self.input[(self.start_index + 1)..(self.current_index - 1)].to_owned(),
                 start: self.start_pos, end: self.current_pos,
             })
@@ -316,7 +317,7 @@ impl<'source> Lexer<'source> {
             }
         }
 
-        Ok(self.make_token(if floating_point { TokenType::Float } else { TokenType::Int }))
+        Ok(self.make_token(if floating_point { TokenType::LiteralFloat } else { TokenType::LiteralInt }))
     }
 
     fn scan_identifier(&mut self) -> LexerResult<Token> {
@@ -332,7 +333,14 @@ impl<'source> Lexer<'source> {
         let mut chars = name.chars();
 
         let token_type = match chars.next().expect("Internal compiler error: Empty identifier") {
-            'b' => Lexer::check_keyword(name, 1, "builtin", TokenType::Builtin),
+            'a' => Lexer::check_keyword(name, 1, "array", TokenType::Array),
+            'b' => if let Some(c) = chars.next() {
+                match c {
+                    'o' => Lexer::check_keyword(name, 2, "boolean", TokenType::Boolean),
+                    'u' => Lexer::check_keyword(name, 2, "builtin", TokenType::Builtin),
+                    _ => TokenType::Identifier,
+                }
+            } else { TokenType::Identifier },
             'e' => if let Some(c) = chars.next() {
                 match c {
                     'l' => Lexer::check_keyword(name, 2, "else", TokenType::Else),
@@ -340,7 +348,13 @@ impl<'source> Lexer<'source> {
                     _ => TokenType::Identifier,
                 }
             } else { TokenType::Identifier },
-            'f' => Lexer::check_keyword(name, 1, "false", TokenType::False),
+            'f' => if let Some(c) = chars.next() {
+                match c {
+                    'a' => Lexer::check_keyword(name, 2, "false", TokenType::False),
+                    'l' => Lexer::check_keyword(name, 2, "float", TokenType::Float),
+                    _ => TokenType::Identifier,
+                }
+            } else {TokenType::Identifier },
             'i' => {
                 if let Some(c) = chars.next() {
                     match c {
@@ -352,6 +366,7 @@ impl<'source> Lexer<'source> {
                                 match c {
                                     'c' => Lexer::check_keyword(name, 3, "include", TokenType::Include),
                                     'l' => Lexer::check_keyword(name, 3, "inline", TokenType::Inline),
+                                    't' => if chars.next().is_some() { TokenType::Identifier } else { TokenType::Int },
                                     _ => TokenType::Identifier,
                                 }
                             } else { TokenType::Identifier }
@@ -362,16 +377,16 @@ impl<'source> Lexer<'source> {
                 } else { TokenType::Identifier }
             },
             'm' => Lexer::check_keyword(name, 1, "module", TokenType::Module),
-            't' => {
-                if let Some(c) = chars.next() {
-                    match c {
-                        'e' => Lexer::check_keyword(name, 2, "template", TokenType::Template),
-                        'h' => Lexer::check_keyword(name, 2, "this", TokenType::This),
-                        'r' => Lexer::check_keyword(name, 2, "true", TokenType::True),
-                        _ => TokenType::Identifier,
-                    }
-                } else { TokenType::Identifier }
-            },
+            'o' => Lexer::check_keyword(name, 1, "object", TokenType::Object),
+            's' => Lexer::check_keyword(name, 1, "string", TokenType::String),
+            't' => if let Some(c) = chars.next() {
+                match c {
+                    'e' => Lexer::check_keyword(name, 2, "template", TokenType::Template),
+                    'h' => Lexer::check_keyword(name, 2, "this", TokenType::This),
+                    'r' => Lexer::check_keyword(name, 2, "true", TokenType::True),
+                    _ => TokenType::Identifier,
+                }
+            } else { TokenType::Identifier },
             '_' => if chars.next().is_some() { TokenType::Identifier
             } else { TokenType::Underscore },
             _ => TokenType::Identifier,

@@ -3,8 +3,8 @@ use lazy_static::lazy_static;
 #[allow(unused)]
 use crate::debug;
 use crate::compiler::lexer::{Lexer, LexerError, Token, TokenPos, TokenType};
-use crate::compiler::ast::simple::{Expr, JsonElementType, Decl, TemplateExpr, VariableType};
-use crate::compiler::ast::typed::ExprType;
+use crate::compiler::ast::simple::{Expr, Decl, TemplateExpr, VariableType};
+use crate::compiler::ast::typed::{ExprType, TypedToken};
 
 lazy_static! {
     static ref ALLOWED_TEMPLATE_NAME_TYPES: [TokenType; 16] = [
@@ -16,6 +16,14 @@ lazy_static! {
         TokenType::And, TokenType::ShortcircuitAnd,
         TokenType::Or, TokenType::ShortcircuitOr,
         TokenType::SquareBracketLeft, // [] operator
+    ];
+
+    static ref ALLOWED_VARIABLE_TYPES: [TokenType; 7] = [
+        TokenType::Int, TokenType::Float,
+        TokenType::Boolean,
+        TokenType::String,
+        TokenType::Object, TokenType::Array,
+        TokenType::Underscore,
     ];
 }
 
@@ -82,13 +90,14 @@ impl<'source> Parser<'source> {
     fn parse_export_declaration(&mut self) -> Decl {
         self.expect(TokenType::Identifier, "Expected name after 'export'");
         let name = self.previous.clone();
+        let expr_type = self.expect_type("Expected variable type after ':'");
 
         self.expect(TokenType::Assign, "Expected '=' after export name");
 
         let expr = self.parse_expression();
         self.expect_statement_end();
 
-        Decl::Variable { name, expr, kind: VariableType::Export }
+        Decl::Variable { name, expr_type, expr, kind: VariableType::Export }
     }
 
     fn expect_template_name(&mut self, message: &str) -> Token {
@@ -102,6 +111,26 @@ impl<'source> Parser<'source> {
         name
     }
 
+    fn expect_type(&mut self, message: &str) -> ExprType {
+        if self.matches(TokenType::Colon) {
+            self.expect_any(&*ALLOWED_VARIABLE_TYPES, message);
+            let variable_type = self.previous.clone();
+
+            match variable_type.token_type() {
+                TokenType::Int => ExprType::Int,
+                TokenType::Float => ExprType::Float,
+                TokenType::Boolean => ExprType::Boolean,
+                TokenType::String => ExprType::String,
+                TokenType::Object => ExprType::Object,
+                TokenType::Array => ExprType::Array,
+                TokenType::Underscore => ExprType::Any,
+                _ => ExprType::Any,
+            }
+        } else {
+            ExprType::Any
+        }
+    }
+
     fn parse_template_declaration(&mut self) -> Decl {
         let name = self.expect_template_name("Expected name after 'template'");
 
@@ -111,34 +140,40 @@ impl<'source> Parser<'source> {
 
         if self.matches(TokenType::This) {
             let name = self.previous.clone();
-            this = Some(name);
+            let this_type = self.expect_type("Expected template parameter type after ':'");
+            this = Some(TypedToken { token: name, expr_type: this_type });
 
             if !self.check(TokenType::ParenthesisRight) {
-                self.expect(TokenType::Comma, "Expected ',' or ')' after 'this'");
+                self.expect(TokenType::Comma, "Expected ',' or ')' after 'this' parameter");
             }
         }
 
         if !self.check(TokenType::ParenthesisRight) {
             self.expect(TokenType::Identifier, "Expected template parameter name after '('");
-            arguments.push(self.previous.clone());
+            let name = self.previous.clone();
+            let parameter_type = self.expect_type("Expected template parameter type after ':'");
+            arguments.push(TypedToken { token: name, expr_type: parameter_type });
 
             while self.matches(TokenType::Comma) {
                 self.expect(TokenType::Identifier, "Expected template parameter name after ','");
                 let name = self.previous.clone();
+                let parameter_type = self.expect_type("Expected template parameter type after ':'");
 
-                if arguments.iter().any(|arg| *arg.source() == *name.source()) {
+                if arguments.iter().any(|arg| *arg.token.source() == *name.source()) {
                     self.error("Duplicate parameter", false);
                 }
 
-                arguments.push(name);
+                arguments.push(TypedToken { token: name, expr_type: parameter_type });
             }
         }
 
         self.expect(TokenType::ParenthesisRight, "Expected ')' after template parameters");
+        let return_type = self.expect_type("Expected template return type after ':'");
+
         self.expect(TokenType::BracketLeft, "Expected '{' after ')'");
 
         let expr = self.parse_block_template_expression();
-        Decl::Template { name, this, args: arguments, expr }
+        Decl::Template { name, this, args: arguments, return_type, expr }
     }
 
     fn parse_module_declaration(&mut self) -> Decl {
@@ -158,7 +193,7 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_include_declaration(&mut self) -> Decl {
-        self.expect(TokenType::String, "Expected string after 'include'");
+        self.expect(TokenType::LiteralString, "Expected string after 'include'");
         let name = self.previous.clone();
         self.expect_statement_end();
 
@@ -241,7 +276,7 @@ impl<'source> Parser<'source> {
 
     fn parse_statement(&mut self) -> Decl {
         self.consume();
-        self.error("Expected statement", true);
+        self.error("Expected declaration", true);
         Decl::Error
     }
 
@@ -436,7 +471,7 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_primary(&mut self) -> Expr {
-        if self.matches(TokenType::Float) {
+        if self.matches(TokenType::LiteralFloat) {
             let number = self.previous.clone();
             let parsed: Result<f64, _> = number.source().parse();
 
@@ -447,7 +482,7 @@ impl<'source> Parser<'source> {
                     Expr::Error
                 },
             }
-        } else if self.matches(TokenType::Int) {
+        } else if self.matches(TokenType::LiteralInt) {
             let number = self.previous.clone();
             let parsed: Result<i32, _> = number.source().parse();
 
@@ -464,7 +499,7 @@ impl<'source> Parser<'source> {
             return Expr::ConstantBoolean(false)
         } else if self.matches(TokenType::Identifier) || self.matches(TokenType::This) {
             return Expr::Identifier(self.previous.clone())
-        } else if self.matches(TokenType::String) {
+        } else if self.matches(TokenType::LiteralString) {
             return Expr::ConstantString(self.previous.source().to_owned())
         } else if self.matches(TokenType::ParenthesisLeft) {
             let expr = self.parse_expression();
@@ -489,7 +524,7 @@ impl<'source> Parser<'source> {
         let mut fields = vec![];
 
         if !self.check(TokenType::BracketRight) {
-            self.expect(TokenType::String, "Expected string after '{'");
+            self.expect(TokenType::LiteralString, "Expected string after '{'");
             let name = self.previous.clone();
             self.expect(TokenType::Colon, "Expected ':' after object field key");
             let expr = self.parse_expression();
@@ -500,7 +535,7 @@ impl<'source> Parser<'source> {
                     break;
                 }
 
-                self.expect(TokenType::String, "Expected string after '{'");
+                self.expect(TokenType::LiteralString, "Expected string after '{'");
                 let name = self.previous.clone();
                 self.expect(TokenType::Colon, "Expected ':' after object field key");
                 let expr = self.parse_expression();

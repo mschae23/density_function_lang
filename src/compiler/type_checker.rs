@@ -3,10 +3,10 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::{Rc, Weak};
-use crate::compiler::ast::simple::{Expr, TemplateExpr};
-use crate::compiler::lexer::TokenPos;
+use crate::compiler::ast::simple::{Expr, TemplateExpr, VariableType};
+use crate::compiler::lexer::{Token, TokenPos};
 use crate::{Config, Decl};
-use crate::compiler::ast::typed::{ExprType, TypedDecl, TypedExpr, TypedImportableDecl, TypedModuleDecl, TypedTemplateDecl, TypedTemplateExpr, TypedToken, TypedVariableDecl};
+use crate::compiler::ast::typed::{ExprType, TypedDecl, TypedExpr, TypedModuleDecl, TypedTemplateDecl, TypedTemplateExpr, TypedToken, TypedVariableDecl};
 
 struct TypeEnvironment {
     templates: Vec<(String, Rc<RefCell<TypedTemplateDecl>>, ExprType)>,
@@ -90,6 +90,90 @@ impl TypeEnvironment {
     }
 }
 
+#[derive(Clone, PartialEq, Debug)]
+struct TemplateDeclaration {
+    pub name: Token,
+    pub this: Option<TypedToken>,
+    pub args: Vec<TypedToken>,
+    pub return_type: ExprType,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+struct ModuleDeclaration {
+    pub name: Token,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+struct VariableDeclaration {
+    pub name: Token,
+    pub kind: VariableType,
+    pub expr_type: ExprType,
+}
+
+struct TypeDeclarationEnvironment {
+    templates: Vec<TemplateDeclaration>,
+    modules: HashMap<String, ModuleDeclaration>,
+    variables: HashMap<String, VariableDeclaration>,
+}
+
+impl TypeDeclarationEnvironment {
+    pub fn new() -> TypeDeclarationEnvironment {
+        TypeDeclarationEnvironment {
+            templates: Vec::new(),
+            modules: HashMap::new(),
+            variables: HashMap::new(),
+        }
+    }
+
+    pub fn find_template(&self, name: &str, this: Option<&ExprType>, args: &[ExprType]) -> Option<&TemplateDeclaration> {
+        self.templates.iter().find(|template| *template.name.source() == *name
+            && template.this.is_some() == this.is_some()
+            && template.this.and_then(|token| this.map(|expr_type| token.expr_type == *expr_type)).unwrap_or(true)
+            && template.args.len() == args.len()
+            && template.args.iter().map(|arg| arg.expr_type.clone())
+            .zip(args.iter()).map(|(left, right)| left == right.clone()).all(|b| b))
+    }
+
+    pub fn find_module(&self, name: &str) -> Option<&ModuleDeclaration> {
+        self.modules.get(name)
+    }
+
+    pub fn find_variable(&self, name: &str) -> Option<&VariableDeclaration> {
+        self.variables.get(name)
+    }
+
+    pub fn put_template(&mut self, name: Token, this: Option<TypedToken>, args: Vec<TypedToken>, return_type: ExprType) -> bool {
+        if self.find_template(name.source(),
+            this.as_ref().map(|token| &token.expr_type),
+            &args.iter().map(|token| token.expr_type.clone()).collect::<Vec<ExprType>>()).is_some() {
+            false
+        } else {
+            self.templates.push(TemplateDeclaration { name, this, args, return_type });
+            true
+        }
+    }
+
+    pub fn put_module(&mut self, name: Token) -> bool {
+        match self.modules.entry(name.source().to_owned()) {
+            Entry::Occupied(_) => false,
+            Entry::Vacant(entry) => {
+                entry.insert(ModuleDeclaration { name });
+                true
+            },
+        }
+    }
+
+    pub fn put_variable(&mut self, name: Token, kind: VariableType, expr_type: ExprType) -> bool {
+        match self.variables.entry(name.source().to_owned()) {
+            Entry::Occupied(_) => false,
+            Entry::Vacant(entry) => {
+                entry.insert(VariableDeclaration { name, kind, expr_type });
+                true
+            },
+        }
+    }
+}
+
 pub struct TypeChecker {
     global_environment: Rc<RefCell<TypeEnvironment>>,
     environment: Rc<RefCell<TypeEnvironment>>,
@@ -113,45 +197,87 @@ impl TypeChecker {
     }
 
     pub fn check_types(&mut self, declarations: Vec<Decl>) -> Vec<TypedDecl> {
+        let mut environment = TypeDeclarationEnvironment::new();
+
+        for decl in &declarations {
+            self.declare_declaration(decl, &mut environment);
+        }
+
         let mut typed_decls = Vec::new();
 
         for decl in declarations {
-            typed_decls.push(self.check_declaration(decl));
+            typed_decls.push(self.check_declaration(decl, &environment));
         }
 
         typed_decls
     }
 
-    fn check_declaration(&mut self, decl: Decl) -> TypedDecl {
+    fn declare_declaration(&mut self, decl: &Decl, environment: &mut TypeDeclarationEnvironment) {
         match decl {
-            Decl::Template { name, this, args, expr } => {
-                if self.environment.borrow().contains(name.source()) {
-                    self.error_at(*name.start(), "Template with duplicate name", false);
+            Decl::Template { name, this, args, return_type, expr: _ } => {
+                if !environment.put_template(name.clone(), this.clone(), args.clone(), return_type.clone()) {
+                    self.error_at(*name.start(), "Template with duplicate name and parameter list", false);
+                }
+            },
+            Decl::Variable { name, expr_type, expr: _, kind } => {
+                if !environment.put_variable(name.clone(), kind.clone(), expr_type.clone()) {
+                    self.error_at(*name.start(), "Variable with duplicate name", false);
+                }
+            },
+            Decl::Module { name, statements: _ } => {
+                if !environment.put_module(name.clone()) {
+                    self.error_at(*name.start(), "Module with duplicate name", false);
+                }
+            },
+            Decl::Include { .. } => {},
+            Decl::Import { .. } => {},
+            Decl::Error => {},
+        }
+    }
+
+    fn check_declaration(&mut self, decl: Decl, environment: &TypeDeclarationEnvironment) -> TypedDecl {
+        match decl {
+            Decl::Template { name, this, args, return_type, expr } => {
+                let typed_expr = self.check_template_expr(expr, vec![return_type], environment);
+                let expr_type = typed_expr.get_type();
+
+                if !expr_type.can_coerce_to(return_type.clone()) {
+                    self.error_at_with_context(*name.start(), "Template expression cannot be converted to the template's return type", vec![
+                        ("Expected", Expr::BuiltinType(return_type.clone())),
+                        ("Found", Expr::BuiltinType(expr_type.clone()))
+                    ], false);
                 }
 
-                let typed_this = this.map(|token| TypedToken { token, expr_type: ExprType::Any });
-                let typed_args = args.into_iter().map(|token| TypedToken { token, expr_type: ExprType::Any }).collect();
-                let typed_expr = self.check_template_expr(expr);
-                let expr_type = typed_expr.get_type();
+                let final_return_type = if return_type == ExprType::Any { expr_type } else { return_type };
 
                 let template_decl = Rc::new(RefCell::new(TypedTemplateDecl {
-                    name, this: typed_this, args: typed_args, expr: typed_expr,
+                    name, this, args, return_type: final_return_type.clone(), expr: typed_expr,
                 }));
 
-                self.environment.borrow_mut().put_template(name.source().to_owned(), Rc::clone(&template_decl), expr_type);
+                self.environment.borrow_mut().put_template(name.source().to_owned(), Rc::clone(&template_decl), final_return_type);
                 TypedDecl::Template(template_decl)
             },
-            Decl::Variable { name, expr, kind } => {
-                let typed_expr = self.check_expr(expr);
-                let expr_type = typed_expr.get_type();
+            Decl::Variable { name, expr_type, expr, kind } => {
+                let typed_expr = self.check_expr(expr, vec![expr_type.clone()], environment);
+                let actual_expr_type = typed_expr.get_type();
+
+                if !actual_expr_type.can_coerce_to(expr_type.clone()) {
+                    self.error_at_with_context(*name.start(), "Variable expression cannot be converted to the declared type", vec![
+                        ("Expected", Expr::BuiltinType(expr_type.clone())),
+                        ("Found", Expr::BuiltinType(actual_expr_type.clone()))
+                    ], false);
+                }
+
+                let final_expr_type = if expr_type == ExprType::Any { actual_expr_type } else { expr_type };
 
                 let variable = Rc::new(RefCell::new(TypedVariableDecl {
                     name,
+                    expr_type: final_expr_type.clone(),
                     expr: typed_expr,
                     kind,
                 }));
 
-                self.environment.borrow_mut().put_variable(name.source().to_owned(), Rc::clone(&variable), expr_type);
+                self.environment.borrow_mut().put_variable(name.source().to_owned(), Rc::clone(&variable), final_expr_type);
                 TypedDecl::Variable(variable)
             },
             Decl::Module { name, statements: declarations } => {
@@ -159,7 +285,7 @@ impl TypeChecker {
                 let child_environment = TypeEnvironment::new_with_parent(Rc::clone(&current_environment));
                 self.environment = Rc::clone(&child_environment);
 
-                let typed_declarations = declarations.into_iter().map(|decl| self.check_declaration(decl)).collect();
+                let typed_declarations = declarations.into_iter().map(|decl| self.check_declaration(decl, environment)).collect();
 
                 current_environment.borrow_mut().add_child(child_environment);
                 self.environment = current_environment;
@@ -186,18 +312,19 @@ impl TypeChecker {
         }
     }
 
-    fn check_template_expr(&mut self, expr: TemplateExpr) -> TypedTemplateExpr {
+    fn check_template_expr(&mut self, expr: TemplateExpr, type_hints: Vec<ExprType>, _environment: &TypeDeclarationEnvironment) -> TypedTemplateExpr {
         match expr {
             TemplateExpr::Block { expressions, last } => {
                 TypedTemplateExpr::Block {
-                    expressions: expressions.into_iter().map(|expr| self.check_template_expr(expr)).collect(),
-                    last: Box::new(self.check_template_expr(*last)),
+                    expressions: expressions.into_iter()
+                        .map(|expr| self.check_template_expr(expr, vec![ExprType::Any], _environment)).collect(),
+                    last: Box::new(self.check_template_expr(*last, type_hints, _environment)),
                 }
             },
             TemplateExpr::If { token, condition, then, otherwise } => {
-                let typed_condition = self.check_expr(condition);
-                let typed_then = self.check_template_expr(*then);
-                let typed_otherwise = self.check_template_expr(*otherwise);
+                let typed_condition = self.check_expr(condition, vec![ExprType::Boolean], _environment);
+                let typed_then = self.check_template_expr(*then, type_hints.clone(), _environment);
+                let typed_otherwise = self.check_template_expr(*otherwise, type_hints, _environment);
 
                 if typed_condition.get_type() != ExprType::Boolean {
                     self.error_at(*token.start(), "Condition of 'if' expression must be of type 'boolean'", false);
@@ -213,11 +340,11 @@ impl TypeChecker {
                 TypedTemplateExpr::If { token, condition: typed_condition,
                     then: Box::new(typed_then), otherwise: Box::new(typed_otherwise), result_type }
             },
-            TemplateExpr::Simple(expr) => TypedTemplateExpr::Simple(self.check_expr(expr)),
+            TemplateExpr::Simple(expr) => TypedTemplateExpr::Simple(self.check_expr(expr, type_hints, _environment)),
         }
     }
 
-    fn check_expr(&mut self, expr: Expr) -> TypedExpr {
+    fn check_expr(&mut self, expr: Expr, _type_hints: Vec<ExprType>, _environment: &TypeDeclarationEnvironment) -> TypedExpr {
         match expr {
             Expr::ConstantFloat(value) => TypedExpr::ConstantFloat(value),
             Expr::ConstantInt(value) => TypedExpr::ConstantInt(value),
