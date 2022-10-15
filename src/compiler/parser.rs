@@ -18,7 +18,7 @@ lazy_static! {
         TokenType::SquareBracketLeft, // [] operator
     ];
 
-    static ref ALLOWED_VARIABLE_TYPES: [TokenType; 7] = [
+    static ref ALLOWED_VARIABLE_TYPES: [TokenType; 8] = [
         TokenType::Int, TokenType::Float,
         TokenType::Boolean,
         TokenType::String,

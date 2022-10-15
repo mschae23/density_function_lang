@@ -5,23 +5,6 @@ use crate::compiler::ast::simple::{Expr, JsonElement, Module, ExportFunction, De
 use crate::compiler::lexer::{Token, TokenPos};
 use crate::Config;
 
-struct TemplateScope {
-    pub args: Vec<(String, JsonElement)>,
-}
-
-struct TemplateCall {
-    pub template: Rc<RefCell<Template>>,
-    pub name: String,
-    pub receiver: bool,
-    pub arg_count: i32,
-
-    pub path: Rc<RefCell<PathBuf>>,
-    pub line: i32,
-    pub column: i32,
-
-    pub tailrec_index: u32,
-}
-
 pub struct Compiler {
     path: PathBuf, target_dir: PathBuf,
 

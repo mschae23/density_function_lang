@@ -1,9 +1,9 @@
 use std::cell::RefCell;
 use std::fmt::{Debug, Formatter};
 use std::rc::Rc;
-use clap::arg;
 use crate::compiler::ast::simple::VariableType;
 use crate::compiler::lexer::Token;
+use crate::compiler::type_checker::hint::TypeHint;
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum ExprType {
@@ -12,9 +12,9 @@ pub enum ExprType {
     Object, Array,
     Type,
     Template {
-        this: Option<ExprType>,
+        this: Option<Box<ExprType>>,
         args: Vec<ExprType>,
-        return_type: ExprType,
+        return_type: Box<ExprType>,
     },
     Module,
     Any,
@@ -41,6 +41,10 @@ impl ExprType {
         }
 
         false
+    }
+
+    pub fn to_type_hint(&self) -> TypeHint {
+        TypeHint::from_expr_type(self)
     }
 }
 
@@ -142,9 +146,9 @@ impl Debug for TypedVariableDecl {
 
 #[derive(Clone, PartialEq)]
 pub enum TypedImportableDecl {
-    Template(Rc<RefCell<TypedTemplateDecl>>),
-    Module(Rc<RefCell<TypedModuleDecl>>),
-    Variable(Rc<RefCell<TypedVariableDecl>>),
+    Template(Rc<RefCell<TemplateDeclaration>>),
+    Module(Rc<RefCell<ModuleDeclaration>>),
+    Variable(Rc<RefCell<VariableDeclaration>>),
 }
 
 impl Debug for TypedImportableDecl {
