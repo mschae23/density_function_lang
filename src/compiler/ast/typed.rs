@@ -225,17 +225,6 @@ pub enum TypedExpr {
         expr_type: ExprType,
     },
 
-    UnaryOperator {
-        operator: Token,
-        expr: Box<TypedExpr>,
-        result_type: ExprType,
-    },
-    BinaryOperator {
-        left: Box<TypedExpr>,
-        operator: Token,
-        right: Box<TypedExpr>,
-        result_type: ExprType,
-    },
     FunctionCall {
         callee: Box<TypedExpr>,
         token: Token,
@@ -245,12 +234,6 @@ pub enum TypedExpr {
     Member {
         receiver: Box<TypedExpr>,
         name: Token,
-        result_type: ExprType,
-    },
-    Index {
-        receiver: Box<TypedExpr>,
-        operator: Token,
-        index: Box<TypedExpr>,
         result_type: ExprType,
     },
     BuiltinFunctionCall {

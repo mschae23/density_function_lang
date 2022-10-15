@@ -53,7 +53,7 @@ pub fn compile(path: PathBuf, target_dir: PathBuf, config: Rc<Config>) -> Result
         None => return Ok(None),
     };
 
-    let mut type_checker = TypeChecker::new(path.clone(), target_dir.clone(), Rc::clone(&config));
+    let mut type_checker = TypeChecker::new(path.clone(), Rc::clone(&config));
     let declarations = type_checker.check_types(declarations);
 
     if type_checker.had_error() {

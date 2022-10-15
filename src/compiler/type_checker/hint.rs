@@ -66,44 +66,49 @@ impl Debug for TemplateType {
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum TypeHint {
-    Simple(Vec<SimpleType>),
+    Simple(SimpleType),
     Template(TemplateType),
     Module,
+    Options(Vec<TypeHint>),
     Any,
 }
 
 impl TypeHint {
     pub fn matches(&self, other: &ExprType, allow_coerce: bool) -> bool {
-        match other {
-            ExprType::Template { this: other_this, args: other_args, return_type: other_return_type } => match self {
-                TypeHint::Template(template) => {
-                    template.matches(other_this.as_ref().map(|ty| &**ty), other_args, other_return_type, allow_coerce)
-                },
-                TypeHint::Any => allow_coerce,
-                _ => false,
+        match self {
+            TypeHint::Options(options) => {
+                if options.is_empty() {
+                    return allow_coerce;
+                }
+
+                for hint in options {
+                    if hint.matches(other, allow_coerce) {
+                        return true;
+                    }
+                }
+
+                false
             },
-            ExprType::Module => *self == TypeHint::Module || (allow_coerce && *self == TypeHint::Any),
-            ExprType::Any => *self == TypeHint::Any,
-            ExprType::Error => false,
-            expr_type => match self {
-                TypeHint::Simple(simple_types) => {
-                    if simple_types.is_empty() {
-                        return allow_coerce;
-                    }
-
-                    for simple in simple_types {
-                        let simple_type: ExprType = simple.to_expr_type();
-                        let compare = if allow_coerce { simple_type.can_coerce_to(expr_type) } else { simple_type == *expr_type };
-
-                        if compare {
-                            return true;
-                        }
-                    }
-
-                    false
+            _ => match other {
+                ExprType::Template { this: other_this, args: other_args, return_type: other_return_type } => match self {
+                    TypeHint::Template(template) => {
+                        template.matches(other_this.as_ref().map(|ty| &**ty), other_args, other_return_type, allow_coerce)
+                    },
+                    TypeHint::Any => allow_coerce,
+                    _ => false,
                 },
-                TypeHint::Any => allow_coerce,
-                _ => false,
+                ExprType::Module => *self == TypeHint::Module || (allow_coerce && *self == TypeHint::Any),
+                ExprType::Any => *self == TypeHint::Any,
+                ExprType::Error => false,
+                expr_type => match self {
+                    TypeHint::Simple(simple_type) => if allow_coerce {
+                        simple_type.to_expr_type().can_coerce_to(expr_type)
+                    } else {
+                        simple_type.to_expr_type() == *expr_type
+                    },
+                    TypeHint::Any => allow_coerce,
+                    _ => false,
+                },
             },
         }
     }
@@ -112,13 +117,13 @@ impl TypeHint {
 impl TypeHint {
     pub fn from_expr_type(expr_type: &ExprType) -> Self {
         match expr_type {
-            ExprType::Int => TypeHint::Simple(vec![SimpleType::Int]),
-            ExprType::Float => TypeHint::Simple(vec![SimpleType::Float]),
-            ExprType::Boolean => TypeHint::Simple(vec![SimpleType::Boolean]),
-            ExprType::String => TypeHint::Simple(vec![SimpleType::String]),
-            ExprType::Object => TypeHint::Simple(vec![SimpleType::Object]),
-            ExprType::Array => TypeHint::Simple(vec![SimpleType::Array]),
-            ExprType::Type => TypeHint::Simple(vec![SimpleType::Type]),
+            ExprType::Int => TypeHint::Simple(SimpleType::Int),
+            ExprType::Float => TypeHint::Simple(SimpleType::Float),
+            ExprType::Boolean => TypeHint::Simple(SimpleType::Boolean),
+            ExprType::String => TypeHint::Simple(SimpleType::String),
+            ExprType::Object => TypeHint::Simple(SimpleType::Object),
+            ExprType::Array => TypeHint::Simple(SimpleType::Array),
+            ExprType::Type => TypeHint::Simple(SimpleType::Type),
             ExprType::Template { this, args, return_type } =>
                 TypeHint::Template(TemplateType {
                     this: this.as_ref().map(|this| Box::new(this.to_type_hint())),
@@ -135,26 +140,27 @@ impl TypeHint {
 impl Debug for TypeHint {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            TypeHint::Simple(simple) => {
-                if simple.is_empty() {
+            TypeHint::Simple(simple) => write!(f, "{:?}", simple),
+            TypeHint::Template(template) => write!(f, "{:?}", template),
+            TypeHint::Module => write!(f, "module"),
+            TypeHint::Options(options) => {
+                if options.is_empty() {
                     return write!(f, "_");
                 } else {
-                    if simple.len() > 1 {
+                    if options.len() > 1 {
                         write!(f, "(")?;
                     }
 
-                    write!(f, "{}", simple.iter().map(|simple| format!("{:?}", simple))
-                        .fold(String::new(), |acc, simple| format!("{} | {}", acc, simple)))?;
+                    write!(f, "{}", options.iter().map(|hint| format!("{:?}", hint))
+                        .fold(String::new(), |acc, hint| format!("{} | {}", acc, hint)))?;
 
-                    if simple.len() > 1 {
+                    if options.len() > 1 {
                         write!(f, ")")?;
                     }
 
                     Ok(())
                 }
             },
-            TypeHint::Template(template) => write!(f, "{:?}", template),
-            TypeHint::Module => write!(f, "module"),
             TypeHint::Any => write!(f, "_"),
         }
     }
