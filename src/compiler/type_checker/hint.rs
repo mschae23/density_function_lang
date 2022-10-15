@@ -44,14 +44,32 @@ pub struct TemplateType {
 }
 
 impl TemplateType {
-    pub fn matches(&self, other_this: Option<&ExprType>, other_args: &[ExprType], other_return_type: &ExprType, allow_coerce: bool) -> bool {
+    pub fn new_any(this: bool, arg_count: usize, return_type: TypeHint) -> TemplateType {
+        TemplateType {
+            this: if this { Some(Box::new(TypeHint::Any)) } else { None },
+            args: std::iter::once(TypeHint::Any).cycle().take(arg_count).collect(),
+            return_type: Box::new(return_type)
+        }
+    }
+
+    pub fn can_coerce_from(&self, other_this: Option<&ExprType>, other_args: &[ExprType], other_return_type: &ExprType, allow_coerce: bool) -> bool {
         self.this.is_some() == other_this.is_some()
-            && self.this.as_ref().map(|hint| other_this.map(|ty| hint.matches(&*ty, allow_coerce))
+            && self.this.as_ref().map(|this| other_this.map(|ty| this.can_coerce_to(&*ty, allow_coerce))
             .unwrap_or(true)).unwrap_or(true)
             && self.args.len() == other_args.len()
             && self.args.iter().zip(other_args.iter())
-            .map(|(hint, other_arg)| hint.matches(other_arg, allow_coerce)).all(|b| b)
-            && self.return_type.matches(other_return_type, allow_coerce)
+            .map(|(arg, other_arg)| arg.can_coerce_to(other_arg, allow_coerce)).all(|b| b)
+            && self.return_type.can_coerce_from(other_return_type, allow_coerce)
+    }
+
+    pub fn can_coerce_to(&self, other_this: Option<&ExprType>, other_args: &[ExprType], other_return_type: &ExprType, allow_coerce: bool) -> bool {
+        self.this.is_some() == other_this.is_some()
+            && self.this.as_ref().map(|this| other_this.map(|ty| this.can_coerce_from(&*ty, allow_coerce))
+            .unwrap_or(true)).unwrap_or(true)
+            && self.args.len() == other_args.len()
+            && self.args.iter().zip(other_args.iter())
+            .map(|(arg, other_arg)| arg.can_coerce_from(other_arg, allow_coerce)).all(|b| b)
+            && self.return_type.can_coerce_to(other_return_type, allow_coerce)
     }
 }
 
@@ -59,7 +77,7 @@ impl Debug for TemplateType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "({}): {:?}", self.this.iter().map(|this| format!("this: {:?}", this))
             .chain(self.args.iter().map(|arg| format!("{:?}", arg)))
-            .fold(String::new(), |acc, arg| format!("{}, {}", acc, arg)),
+            .collect::<Vec<String>>().join(", "),
             &self.return_type)
     }
 }
@@ -71,42 +89,86 @@ pub enum TypeHint {
     Module,
     Options(Vec<TypeHint>),
     Any,
+    Error,
 }
 
 impl TypeHint {
-    pub fn matches(&self, other: &ExprType, allow_coerce: bool) -> bool {
+    pub fn can_coerce_from(&self, other: &ExprType, allow_coerce: bool) -> bool {
         match self {
             TypeHint::Options(options) => {
                 if options.is_empty() {
-                    return allow_coerce;
+                    return TypeHint::Any.can_coerce_from(other, allow_coerce);
                 }
 
                 for hint in options {
-                    if hint.matches(other, allow_coerce) {
+                    if hint.can_coerce_from(other, allow_coerce) {
                         return true;
                     }
                 }
 
                 false
             },
+            TypeHint::Error => false,
+            TypeHint::Any => *other == ExprType::Any || (allow_coerce && *other != ExprType::Error),
             _ => match other {
                 ExprType::Template { this: other_this, args: other_args, return_type: other_return_type } => match self {
                     TypeHint::Template(template) => {
-                        template.matches(other_this.as_ref().map(|ty| &**ty), other_args, other_return_type, allow_coerce)
+                        template.can_coerce_from(other_this.as_ref().map(|ty| &**ty), other_args, other_return_type, allow_coerce)
                     },
-                    TypeHint::Any => allow_coerce,
                     _ => false,
                 },
-                ExprType::Module => *self == TypeHint::Module || (allow_coerce && *self == TypeHint::Any),
-                ExprType::Any => *self == TypeHint::Any,
+                ExprType::Module => *self == TypeHint::Module,
+                ExprType::Any => false, // Would need self == Any, but that was already checked and is false
                 ExprType::Error => false,
                 expr_type => match self {
-                    TypeHint::Simple(simple_type) => if allow_coerce {
-                        simple_type.to_expr_type().can_coerce_to(expr_type)
-                    } else {
-                        simple_type.to_expr_type() == *expr_type
+                    TypeHint::Simple(simple_type) => {
+                        if allow_coerce {
+                            expr_type.can_coerce_to(&simple_type.to_expr_type())
+                        } else {
+                            simple_type.to_expr_type() == *expr_type
+                        }
                     },
-                    TypeHint::Any => allow_coerce,
+                    _ => false,
+                },
+            },
+        }
+    }
+
+    pub fn can_coerce_to(&self, other: &ExprType, allow_coerce: bool) -> bool {
+        match self {
+            TypeHint::Options(options) => {
+                if options.is_empty() {
+                    return TypeHint::Any.can_coerce_to(other, allow_coerce);
+                }
+
+                for self_type in options {
+                    if self_type.can_coerce_to(other, allow_coerce) {
+                        return true;
+                    }
+                }
+
+                false
+            },
+            TypeHint::Error => false,
+            TypeHint::Any => *other == ExprType::Any,
+            _ => match other {
+                ExprType::Template { this: other_this, args: other_args, return_type: other_return_type } => match self {
+                    TypeHint::Template(template) => {
+                        template.can_coerce_to(other_this.as_ref().map(|ty| &**ty), other_args, other_return_type, allow_coerce)
+                    },
+                    _ => false,
+                },
+                ExprType::Module => *self == TypeHint::Module,
+                ExprType::Any => allow_coerce && *self != TypeHint::Error,
+                ExprType::Error => false,
+                expr_type => match self {
+                    TypeHint::Simple(simple_type) => {
+                        if allow_coerce {
+                            simple_type.to_expr_type().can_coerce_to(expr_type)
+                        } else {
+                            simple_type.to_expr_type() == *expr_type
+                        }
+                    },
                     _ => false,
                 },
             },
@@ -132,7 +194,7 @@ impl TypeHint {
                 }),
             ExprType::Module => TypeHint::Module,
             ExprType::Any => TypeHint::Any,
-            ExprType::Error => TypeHint::Any,
+            ExprType::Error => TypeHint::Error,
         }
     }
 }
@@ -152,7 +214,7 @@ impl Debug for TypeHint {
                     }
 
                     write!(f, "{}", options.iter().map(|hint| format!("{:?}", hint))
-                        .fold(String::new(), |acc, hint| format!("{} | {}", acc, hint)))?;
+                        .collect::<Vec<String>>().join(" | "))?;
 
                     if options.len() > 1 {
                         write!(f, ")")?;
@@ -162,6 +224,7 @@ impl Debug for TypeHint {
                 }
             },
             TypeHint::Any => write!(f, "_"),
+            TypeHint::Error => write!(f, "error"),
         }
     }
 }

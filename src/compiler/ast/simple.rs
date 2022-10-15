@@ -42,7 +42,7 @@ pub enum Decl {
 
     Module {
         name: Token,
-        statements: Vec<Decl>,
+        declarations: Vec<Decl>,
     },
     Include {
         path: Token,
@@ -69,7 +69,7 @@ impl Debug for Decl {
             Decl::Variable { name, expr, kind, .. } =>
                 write!(f, "{:?} {} = {:?};", kind, name.source(), expr),
 
-            Decl::Module { name, statements } =>
+            Decl::Module { name, declarations: statements } =>
                 write!(f, "module {} {{ {} }}", name.source(), statements.iter().map(|stmt| format!("{:?}", stmt))
                     .collect::<Vec<String>>().join(" ")),
             Decl::Include { path, declarations: _ } => write!(f, "include \"{}\";", path.source()),

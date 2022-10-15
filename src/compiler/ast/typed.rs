@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::rc::Rc;
 use crate::compiler::ast::simple::VariableType;
@@ -78,7 +79,7 @@ pub struct TypedToken {
 
 impl Debug for TypedToken {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}: {:?}", self.token, self.expr_type)
+        write!(f, "{}: {:?}", self.token, self.expr_type)
     }
 }
 
@@ -93,6 +94,9 @@ pub struct TemplateDeclaration {
 #[derive(Clone, PartialEq, Debug)]
 pub struct ModuleDeclaration {
     pub name: Token,
+    pub submodules: HashMap<String, Rc<RefCell<ModuleDeclaration>>>,
+    pub variables: HashMap<String, Rc<RefCell<VariableDeclaration>>>,
+    pub templates: Vec<Rc<RefCell<TemplateDeclaration>>>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -257,11 +261,8 @@ impl TypedExpr {
             TypedExpr::ConstantBoolean(_) => ExprType::Boolean,
             TypedExpr::ConstantString(_) => ExprType::String,
             TypedExpr::Identifier { expr_type, .. } => expr_type.clone(),
-            TypedExpr::UnaryOperator { result_type, .. } => result_type.clone(),
-            TypedExpr::BinaryOperator { result_type, .. } => result_type.clone(),
             TypedExpr::FunctionCall { result_type, .. } => result_type.clone(),
             TypedExpr::Member { result_type, .. } => result_type.clone(),
-            TypedExpr::Index { result_type, .. } => result_type.clone(),
             TypedExpr::BuiltinFunctionCall { result_type, .. } => result_type.clone(),
             TypedExpr::BuiltinType(_) => ExprType::Type,
             TypedExpr::Object(_) => ExprType::Object,

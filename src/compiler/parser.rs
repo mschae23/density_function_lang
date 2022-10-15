@@ -184,14 +184,14 @@ impl<'source> Parser<'source> {
 
         self.expect(TokenType::BracketLeft, "Expected '{' after module name");
 
-        let mut statements = Vec::new();
+        let mut declarations = Vec::new();
 
         while !self.check(TokenType::BracketRight) && !self.check(TokenType::Eof) {
-            statements.push(self.parse_declaration());
+            declarations.push(self.parse_declaration());
         }
 
         self.expect(TokenType::BracketRight, "Expected '}' after statements in module");
-        Decl::Module { name, statements }
+        Decl::Module { name, declarations }
     }
 
     fn parse_include_declaration(&mut self) -> Decl {
