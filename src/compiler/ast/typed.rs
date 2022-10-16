@@ -4,7 +4,7 @@ use std::fmt::{Debug, Formatter};
 use std::rc::Rc;
 use crate::compiler::ast::simple::VariableType;
 use crate::compiler::lexer::Token;
-use crate::compiler::type_checker::hint::TypeHint;
+use crate::compiler::type_checker::hint::{TemplateType, TypeHint};
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum ExprType {
@@ -79,7 +79,7 @@ pub struct TypedToken {
 
 impl Debug for TypedToken {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {:?}", self.token, self.expr_type)
+        write!(f, "{:?}: {:?}", self.token, self.expr_type)
     }
 }
 
@@ -89,6 +89,34 @@ pub struct TemplateDeclaration {
     pub this: Option<TypedToken>,
     pub args: Vec<TypedToken>,
     pub return_type: ExprType,
+}
+
+impl TemplateDeclaration {
+    pub fn template_to_template_type(this: Option<&TypedToken>, args: &[TypedToken], return_type: &ExprType) -> TemplateType {
+        TemplateType {
+            this: this.map(|this| Box::new(this.expr_type.to_type_hint())),
+            args: args.iter().map(|arg| arg.expr_type.to_type_hint()).collect(),
+            return_type: Box::new(return_type.to_type_hint()),
+        }
+    }
+
+    pub fn templates_to_template_types(templates: &[Rc<RefCell<TemplateDeclaration>>]) -> Vec<TemplateType> {
+        templates.iter().map(|template| {
+            let template_borrow = template.borrow();
+
+            Self::template_to_template_type(template_borrow.this.as_ref(), &template_borrow.args, &template_borrow.return_type)
+        }).collect()
+    }
+
+    pub fn decl_to_type(template_decl: Rc<RefCell<TemplateDeclaration>>) -> ExprType {
+        let template_borrow = template_decl.borrow();
+
+        ExprType::Template {
+            this: template_borrow.this.as_ref().map(|this| Box::new(this.expr_type.clone())),
+            args: template_borrow.args.iter().map(|arg| arg.expr_type.clone()).collect(),
+            return_type: Box::new(template_borrow.return_type.clone()),
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Debug)]

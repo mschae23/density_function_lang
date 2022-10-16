@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::str::Chars;
 use crate::util;
 
@@ -64,7 +64,7 @@ pub enum TokenType {
     Eof,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Token {
     token_type: TokenType,
     source: String,
@@ -101,6 +101,12 @@ impl Display for Token {
             TokenType::LiteralString => write!(f, "`\"{}\"`", self.source),
             _ => write!(f, "`{}`", self.source),
         }
+    }
+}
+
+impl Debug for Token {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(self, f)
     }
 }
 

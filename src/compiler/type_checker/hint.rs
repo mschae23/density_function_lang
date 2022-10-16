@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter};
 use crate::compiler::ast::typed::ExprType;
 
@@ -70,6 +71,81 @@ impl TemplateType {
             && self.args.iter().zip(other_args.iter())
             .map(|(arg, other_arg)| arg.can_coerce_from(other_arg, allow_coerce)).all(|b| b)
             && self.return_type.can_coerce_to(other_return_type, allow_coerce)
+    }
+
+    pub fn merge(templates: &[TemplateType], this: bool, arg_count: usize, return_type_hint: TypeHint) -> TemplateType {
+        // All templates can have different types for this and arguments, but this.is_some() and args.len() must be the same
+
+        if templates.is_empty() {
+            TemplateType::new_any(this, arg_count, return_type_hint)
+        } else {
+            let has_this = templates[0].this.is_some();
+            let mut this = Vec::new();
+
+            if has_this {
+                for template in templates {
+                    match &template.this {
+                        None => break,
+                        Some(this_type) => {
+                            if !this.contains(&**this_type) {
+                                this.push((&**this_type).clone());
+                            }
+                        }
+                    }
+                }
+            }
+
+            let this = match this.len().cmp(&1) {
+                Ordering::Less => TypeHint::Any,
+                Ordering::Equal => this.swap_remove(0),
+                Ordering::Greater => TypeHint::Options(this),
+            };
+
+            let arg_count = templates[0].args.len();
+            let mut args = Vec::new();
+
+            for i in 0..arg_count {
+                let mut types = Vec::new();
+
+                for template in templates {
+                    let hint = &template.args[i];
+
+                    if !types.contains(hint) {
+                        types.push(hint.clone());
+                    }
+                }
+
+                args.push(match types.len().cmp(&1) {
+                    Ordering::Less => TypeHint::Any,
+                    Ordering::Equal => types.swap_remove(0),
+                    Ordering::Greater => TypeHint::Options(types),
+                });
+            }
+
+            let return_type = {
+                let mut types = vec![return_type_hint];
+
+                for template in templates {
+                    let hint = &*template.return_type;
+
+                    if !types.contains(hint) {
+                        types.push(hint.clone());
+                    }
+                }
+
+                Box::new(match types.len().cmp(&1) {
+                    Ordering::Less => TypeHint::Any,
+                    Ordering::Equal => types.swap_remove(0),
+                    Ordering::Greater => TypeHint::Options(types),
+                })
+            };
+
+            TemplateType {
+                this: if has_this { Some(Box::new(this)) } else { None },
+                args,
+                return_type,
+            }
+        }
     }
 }
 
