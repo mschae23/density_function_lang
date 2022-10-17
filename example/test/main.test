@@ -1,4 +1,4 @@
-template identity(x: float) { 9.3 }
+template identity(x) { x }
 
 export zero = identity(0.0);
 

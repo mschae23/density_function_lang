@@ -16,15 +16,15 @@ template iteration(i) {
 
 export loop_for_index_test = loop_for_index(0, 20, 1, iteration);
 
-template array_fold(array, start_acc, f) {
-    array_fold_impl(array, start_acc, f, 0)
+template array_fold(_array, start_acc, f) {
+    array_fold_impl(_array, start_acc, f, 0)
 }
 
-template array_fold_impl(array, acc, f, index) {
-    if (index >= array.length)
+template array_fold_impl(_array, acc, f, index) {
+    if (index >= _array.length)
         acc
     else {
-        array_fold_impl(array, f(acc, builtin.static(array[index])), f, builtin.static(index + 1))
+        array_fold_impl(_array, f(acc, builtin.static(_array[index])), f, builtin.static(index + 1))
     }
 }
 

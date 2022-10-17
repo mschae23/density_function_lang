@@ -1,10 +1,11 @@
 use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::os::linux::raw::stat;
 use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 use crate::compiler::ast::simple::{Expr, TemplateExpr, VariableType};
-use crate::compiler::lexer::{Token, TokenPos};
+use crate::compiler::lexer::{Token, TokenPos, TokenType};
 use crate::{Config, Decl};
 use crate::compiler::ast::typed::{ExprType, ModuleDeclaration, TemplateDeclaration, TypedDecl, TypedExpr, TypedImportableDecl, TypedModuleDecl, TypedTemplateDecl, TypedTemplateExpr, TypedToken, TypedVariableDecl, VariableDeclaration};
 
@@ -195,9 +196,16 @@ impl TypeEnvironment {
     }
 }
 
+#[derive(Clone, PartialEq)]
+struct TemplateScope {
+    pub this: Option<ExprType>,
+    pub args: HashMap<String, ExprType>,
+}
+
 pub struct TypeChecker {
     global_environment: Rc<RefCell<TypeEnvironment>>,
     environment: Rc<RefCell<TypeEnvironment>>,
+    template_scope: Option<TemplateScope>,
 
     path: PathBuf,
 
@@ -211,6 +219,7 @@ impl TypeChecker {
 
         TypeChecker {
             global_environment: Rc::clone(&environment), environment,
+            template_scope: None,
             path,
             had_error: false, panic_mode: false,
             config,
@@ -273,7 +282,14 @@ impl TypeChecker {
     fn check_declaration(&mut self, decl: Decl) -> TypedDecl {
         match decl {
             Decl::Template { name, this, args, return_type, expr } => {
+                self.template_scope = Some(TemplateScope {
+                    this: this.as_ref().map(|this| this.expr_type.clone()),
+                    args: args.iter().map(|arg| (arg.token.source().to_owned(), arg.expr_type.clone())).collect(),
+                });
+
                 let typed_expr = self.check_template_expr(expr, false, return_type.to_type_hint());
+                self.template_scope = None;
+
                 let expr_type = typed_expr.get_type();
 
                 if !expr_type.can_coerce_to(&return_type) {
@@ -407,6 +423,27 @@ impl TypeChecker {
             Expr::ConstantBoolean(value) => TypedExpr::ConstantBoolean(value),
             Expr::ConstantString(value) => TypedExpr::ConstantString(value),
             Expr::Identifier(token) => {
+                if let Some(template_scope) = &self.template_scope {
+                    let arg_type = if token.token_type() == TokenType::This {
+                        match &template_scope.this {
+                            None => {
+                                self.error_at(*token.start(), "Template does not have 'this' parameter", false);
+                                Some(ExprType::Error)
+                            },
+                            Some(this) => Some(this.clone()),
+                        }
+                    } else {
+                        template_scope.args.get(token.source()).cloned()
+                    };
+
+                    if let Some(arg_type) = arg_type {
+                        return TypedExpr::TemplateArgument {
+                            token,
+                            expr_type: arg_type,
+                        };
+                    }
+                }
+
                 self.resolve_reference(&token, type_hint)
                     .map(|decl| {
                         let expr_type = match &decl {
@@ -492,11 +529,15 @@ impl TypeChecker {
                     },
                 }
             },
-            Expr::Member { receiver: _, name: _ } => {
+            Expr::Member { receiver, name } => {
+                if static_expr {
+                    todo!("Static member expressions")
+                }
+
                 TypedExpr::Error
             },
-            Expr::Index { receiver: _, operator: _, index: _ } => {
-                TypedExpr::Error
+            Expr::Index { receiver, operator, index } => {
+                self.check_operator_expr(operator, vec![*receiver, *index], static_expr, type_hint)
             },
             Expr::BuiltinFunctionCall { name: _, args: _ } => {
                 TypedExpr::Error
@@ -517,6 +558,12 @@ impl TypeChecker {
     }
 
     fn check_operator_expr(&mut self, operator: Token, args: Vec<Expr>, static_expr: bool, return_type_hint: TypeHint) -> TypedExpr {
+        if static_expr {
+            if let Some(result) = self.check_static_operator_expr(&operator, &args, &return_type_hint) {
+                return result;
+            }
+        }
+
         let mut template_type_hint = TemplateType::merge(
             &TemplateDeclaration::templates_to_template_types(
                 &self.environment.borrow().find_template_options(operator.source(), false, args.len(), true)),
@@ -585,6 +632,78 @@ impl TypeChecker {
         }
     }
 
+    fn check_static_operator_expr(&mut self, operator: &Token, args: &[Expr], _return_type_hint: &TypeHint) -> Option<TypedExpr> {
+        let arg_hint = match args.len() {
+            1 => match operator.source() {
+                "+" | "-" => TypeHint::Options(vec![TypeHint::Simple(SimpleType::Int), TypeHint::Simple(SimpleType::Float)]),
+                "!" => TypeHint::Simple(SimpleType::Boolean),
+                _ => return None,
+            },
+            2 => match operator.source() {
+                "+" | "-" | "*" | "/" | "<" | "<=" | ">" | ">=" =>
+                    TypeHint::Options(vec![TypeHint::Simple(SimpleType::Int), TypeHint::Simple(SimpleType::Float)]),
+                "==" | "!=" => TypeHint::Any,
+                "&&" | "||" => TypeHint::Simple(SimpleType::Boolean),
+                "[" => TypeHint::Any, // Array and int
+                _ => return None,
+            },
+            _ => return None,
+        };
+
+        let arg_hints = if args.len() == 2 && operator.source() == "[" {
+            vec![TypeHint::Simple(SimpleType::Array), TypeHint::Simple(SimpleType::Int)]
+        } else {
+            vec![arg_hint; args.len()]
+        };
+
+        let mut typed_args = Vec::new();
+
+        for (i, arg) in args.iter().enumerate() {
+            typed_args.push(self.check_expr(arg.clone(), true, arg_hints[i].clone()));
+        }
+
+        let arg_types: Vec<ExprType> = typed_args.iter().map(|arg| arg.get_type()).collect();
+
+        for (i, (arg_hint, arg_type)) in arg_hints.iter().zip(arg_types.iter()).enumerate() {
+            if !arg_hint.can_coerce_from(arg_type, true) {
+                self.error_at_with_context(*operator.start(), &format!("Mismatched types: argument {} for static operator '{}'", i + 1, operator.source()), vec![
+                    ("Expected", arg_hint),
+                    ("Found", &arg_type.to_type_hint()),
+                ], false);
+            }
+        }
+
+        let result_type = match args.len() {
+            1 => match operator.source() {
+                "+" | "-" => if arg_types.iter().any(|arg_type| *arg_type == ExprType::Float) {
+                    ExprType::Float
+                } else {
+                    ExprType::Int
+                },
+                "!" => ExprType::Boolean,
+                _ => ExprType::Any,
+            },
+            2 => match operator.source() {
+                "+" | "-" | "*" | "/" => if arg_types.iter().any(|arg_type| *arg_type == ExprType::Float) {
+                    ExprType::Float
+                } else {
+                    ExprType::Int
+                },
+                "<" | "<=" | ">" | ">=" | "==" | "!=" => ExprType::Boolean,
+                "&&" | "||" => ExprType::Boolean,
+                "[" => ExprType::Any,
+                _ => ExprType::Any,
+            },
+            _ => ExprType::Any,
+        };
+
+        Some(TypedExpr::BuiltinFunctionCall {
+            name: operator.clone(),
+            args: typed_args,
+            result_type,
+        })
+    }
+
     fn get_template_call_type_hint(&mut self, callee: &Expr, arg_count: usize, return_type_hint: TypeHint, static_expr: bool) -> TemplateType {
         match callee {
             Expr::Identifier(token) =>
@@ -639,13 +758,13 @@ impl TypeChecker {
                 match self.resolve_template(name, template_type) {
                     Some(Some(result)) => Some(TypedImportableDecl::Template(result)),
                     Some(None) => {
-                        self.error_at_with_context(*name.start(), "Ambiguous reference to template", vec![
+                        self.error_at_with_context(*name.start(), &format!("Ambiguous reference to template '{}'", name.source()), vec![
                             ("Expected", type_hint),
                         ], false);
                         None
                     },
                     None => {
-                        self.error_at_with_context(*name.start(), "Template cannot be found", vec![
+                        self.error_at_with_context(*name.start(), &format!("Template '{}' cannot be found", name.source()), vec![
                             ("Expected", type_hint),
                         ], false);
                         None

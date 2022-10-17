@@ -256,6 +256,10 @@ pub enum TypedExpr {
         reference: TypedImportableDecl,
         expr_type: ExprType,
     },
+    TemplateArgument {
+        token: Token,
+        expr_type: ExprType,
+    },
 
     FunctionCall {
         callee: Box<TypedExpr>,
@@ -289,6 +293,7 @@ impl TypedExpr {
             TypedExpr::ConstantBoolean(_) => ExprType::Boolean,
             TypedExpr::ConstantString(_) => ExprType::String,
             TypedExpr::Identifier { expr_type, .. } => expr_type.clone(),
+            TypedExpr::TemplateArgument { expr_type, .. } => expr_type.clone(),
             TypedExpr::FunctionCall { result_type, .. } => result_type.clone(),
             TypedExpr::Member { result_type, .. } => result_type.clone(),
             TypedExpr::BuiltinFunctionCall { result_type, .. } => result_type.clone(),
