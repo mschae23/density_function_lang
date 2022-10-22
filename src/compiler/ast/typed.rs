@@ -25,23 +25,17 @@ pub enum ExprType {
 
 impl ExprType {
     pub fn can_coerce_to(&self, other: &ExprType) -> bool {
-        if *self == ExprType::Error || *other == ExprType::Error {
+        if *self == *other || *self == ExprType::Error {
+            return true;
+        } else if *other == ExprType::Error {
             return false;
         }
 
-        if *self == *other {
-            return true;
-        }
-
         if *other == ExprType::Any {
-            return true;
+            true
+        } else {
+            *self == ExprType::Int && *other == ExprType::Float
         }
-
-        if *self == ExprType::Int && *other == ExprType::Float {
-            return true;
-        }
-
-        false
     }
 
     pub fn to_type_hint(&self) -> TypeHint {
@@ -200,8 +194,8 @@ pub enum TypedDecl {
         declarations: Vec<TypedDecl>,
     },
     Import {
-        from_module: Rc<RefCell<TypedModuleDecl>>,
-        imported: Vec<TypedImportableDecl>,
+        path: Vec<Token>,
+        selector: Option<Vec<Token>>,
     },
 
     Error,

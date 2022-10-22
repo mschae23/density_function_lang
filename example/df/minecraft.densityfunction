@@ -1,16 +1,14 @@
 module df {
-    interface density_function;
-
     // Templates for vanilla density function types
 
     template simple_0(type) { { "type": type } }
     template simple_1(type, arg) { { "type": type, "argument": arg } }
     template simple_2(type, arg1, arg2) { { "type": type, "argument1": arg1, "argument2": arg2 } }
 
-    template add(arg1, arg2) { validate.df_or_number(arg1); validate.df_or_number(arg2); simple_2("minecraft:add", arg1, arg2) }
-    template min(arg1, arg2) { validate.df_or_number(arg1); validate.df_or_number(arg2); simple_2("minecraft:min", arg1, arg2) }
-    template max(arg1, arg2) { validate.df_or_number(arg1); validate.df_or_number(arg2); simple_2("minecraft:max", arg1, arg2) }
-    template mul(arg1, arg2) { validate.df_or_number(arg1); validate.df_or_number(arg2); simple_2("minecraft:mul", arg1, arg2) }
+    template add(arg1, arg2) { /* validate.df_or_number(arg1); validate.df_or_number(arg2); */ simple_2("minecraft:add", arg1, arg2) }
+    template min(arg1, arg2) { /* validate.df_or_number(arg1); validate.df_or_number(arg2); */ simple_2("minecraft:min", arg1, arg2) }
+    template max(arg1, arg2) { /* validate.df_or_number(arg1); validate.df_or_number(arg2); */ simple_2("minecraft:max", arg1, arg2) }
+    template mul(arg1, arg2) { /* validate.df_or_number(arg1); validate.df_or_number(arg2); */ simple_2("minecraft:mul", arg1, arg2) }
 
     template blend_alpha() { simple_0("minecraft:blend_alpha") }
     template blend_offset() { simple_0("minecraft:blend_offset") }
@@ -19,9 +17,9 @@ module df {
     template beardifier() { simple_0("minecraft:beardifier") }
 
     template old_blended_noise(scale_xz, scale_y, factor_xz, factor_y, smear_scale_multiplier) {
-        validate.noise_scale_or_factor(scale_xz); validate.noise_scale_or_factor(scale_y);
-        validate.noise_scale_or_factor(factor_xz); validate.noise_scale_or_factor(factor_y);
-        validate.smear_scale_multiplier(smear_scale_multiplier);
+        // validate.noise_scale_or_factor(scale_xz); validate.noise_scale_or_factor(scale_y);
+        // validate.noise_scale_or_factor(factor_xz); validate.noise_scale_or_factor(factor_y);
+        // validate.smear_scale_multiplier(smear_scale_multiplier);
 
         {
             "type": "minecraft:old_blended_noise",
@@ -32,18 +30,18 @@ module df {
     }
 
     template clamp(arg, min, max) {
-        validate.number(min); validate.number(max);
+        // validate.number(min); validate.number(max);
         { "type": "minecraft:clamp", "input": arg, "min": min, "max": max }
     }
 
-    template constant(value) { validate.number(value); simple_1("minecraft:constant", value) }
+    template constant(value) { /* validate.number(value); */ simple_1("minecraft:constant", value) }
 
     template end_islands() { simple_0("minecraft:end_islands") }
 
     template noise(noise, scale_xz, scale_y) { { "type": "minecraft:noise", "noise": noise, "xz_scale": scale_xz, "y_scale": scale_y } }
 
     template range_choice(arg, min_inclusive, max_exclusive, when_in_range, when_out_of_range) {
-        validate.number(min_inclusive); validate.number(max_exclusive);
+        // validate.number(min_inclusive); validate.number(max_exclusive);
 
         {
             "type": "minecraft:range_choice", "input": arg,
@@ -84,7 +82,7 @@ module df {
     template cache_all_in_cell(arg) { simple_1("minecraft:cache_all_in_cell", arg) }
 
     template y_clamped_gradient(from_y, to_y, from_value, to_value) {
-        validate.y(from_y); validate.y(to_y); validate.number(from_value); validate.number(to_value);
+        // validate.y(from_y); validate.y(to_y); validate.number(from_value); validate.number(to_value);
 
         {
             "type": "minecraft:y_clamped_gradient",
@@ -132,12 +130,12 @@ module df {
     // Other templates
 
     template lerp(delta, start, end) {
-        if (start.type == builtin.type.int || start.type == builtin.type.float) {
-            impl.lerp_const_start(delta, start, end) // Vanilla optimization
-        } else {
+        // if (start.type == builtin.type.int || start.type == builtin.type.float) {
+        //     impl.lerp_const_start(delta, start, end) // Vanilla optimization
+        // } else {
             start * (cache_once(delta) * -1.0 + 1.0)
                 + end * cache_once(delta)
-        }
+        // }
     }
 
     template apply_blending(input, blend_offset) {
@@ -145,39 +143,39 @@ module df {
     }
 
     template apply_blend_density(input) {
-        (0.64 * blend_density(input).interpolated()).squeeze()
+        (0.64 * interpolated(blend_density(input))) // .squeeze()
     }
 
-    template apply_slides(input, min_y, max_y,
-        top_relative_min_y, top_relative_max_y, top_density,
-        bottom_relative_min_y, bottom_relative_max_y, bottom_density) {
-        lerp(
-            y_clamped_gradient(builtin.static(min_y + bottom_relative_min_y), builtin.static(min_y + bottom_relative_max_y), 0.0, 1.0),
-            bottom_density,
-            lerp(
-                y_clamped_gradient(builtin.static(min_y + max_y - top_relative_min_y), builtin.static(min_y + max_y - top_relative_max_y), 1.0, 0.0),
-                top_density,
-                input
-            )
-        )
-    }
+    // template apply_slides(input, min_y, max_y,
+    //     top_relative_min_y, top_relative_max_y, top_density,
+    //     bottom_relative_min_y, bottom_relative_max_y, bottom_density) {
+    //     lerp(
+    //         y_clamped_gradient(builtin.static(min_y + bottom_relative_min_y), builtin.static(min_y + bottom_relative_max_y), 0.0, 1.0),
+    //         bottom_density,
+    //         lerp(
+    //             y_clamped_gradient(builtin.static(min_y + max_y - top_relative_min_y), builtin.static(min_y + max_y - top_relative_max_y), 1.0, 0.0),
+    //             top_density,
+    //             input
+    //         )
+    //     )
+    // }
 
-    template apply_surface_slides(input) {
-        apply_slides(input, -64, 384, 80, 64, -0.078125, 0, 24, 0.1171875)
-    }
+    // template apply_surface_slides(input) {
+    //     apply_slides(input, -64, 384, 80, 64, -0.078125, 0, 24, 0.1171875)
+    // }
 
     module validate {
         // Templates for validation
 
-        template number(_ input: float) {
-            if (input < -1000000.0 || input > 1000000.0) {
+        template number(input: float) {
+            /* if (input < -1000000.0 || input > 1000000.0) {
                 builtin.error("Validation failed: Number out of bounds", input);
                 false
-            } else true
+            } else */ true
         }
 
-        template df_or_number(_ input) {
-            if (input.type == builtin.type.int || input.type == builtin.type.float) {
+        template df_or_number(input) {
+            /* if (input.type == builtin.type.int || input.type == builtin.type.float) {
                 if (input < -1000000.0 || input > 1000000.0) {
                     builtin.error("Validation failed: Number out of range", input);
                     false
@@ -185,28 +183,28 @@ module df {
             } else if (input.type != builtin.type.object && input.type != builtin.type.string) {
                 builtin.error("Validation failed: Input is neither a number nor an object", input);
                 false
-            } else true
+            } else */ true
         }
 
-        template y(_ input: int) {
-            if (input < -4064 || input > 4062) {
+        template y(input: int) {
+            /* if (input < -4064 || input > 4062) {
                 builtin.error("Validation failed: Number out of bounds", input);
                 false
-            } else true
+            } else */ true
         }
 
-        template noise_scale_or_factor(_ input: float) {
-            if (input < 0.001 || input > 1000.0) {
+        template noise_scale_or_factor(input: float) {
+            /* if (input < 0.001 || input > 1000.0) {
                 builtin.error("Validation failed: Number out of bounds", input);
                 false
-            } else true
+            } else */ true
         }
 
-        template smear_scale_multiplier(_ input: float) {
-            if (input < 1.0 || input > 8.0) {
+        template smear_scale_multiplier(input: float) {
+            /* if (input < 1.0 || input > 8.0) {
                 builtin.error("Validation failed: Number out of bounds", input);
                 false
-            } else true
+            } else */ true
         }
     }
 
@@ -215,7 +213,7 @@ module df {
             // if (start == 0.0) {
             //     delta * end
             // } else {
-            start + delta * (builtin.static(-start) + end)
+            /* start + delta * (builtin.static(-start) + end) */ 0.0
             // }
         }
     }
