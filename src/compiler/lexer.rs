@@ -32,7 +32,7 @@ pub enum TokenType {
     ParenthesisLeft, ParenthesisRight,
     BracketLeft, BracketRight,
     SquareBracketLeft, SquareBracketRight,
-    Dot, Comma, Semicolon, Colon,
+    Dot, Comma, Semicolon, Colon, ColonColon,
 
     Assign, Equal,
     Not, NotEqual,
@@ -212,7 +212,9 @@ impl<'source> Lexer<'source> {
                 '.' => Ok(self.make_token(TokenType::Dot)),
                 ',' => Ok(self.make_token(TokenType::Comma)),
                 ';' => Ok(self.make_token(TokenType::Semicolon)),
-                ':' => Ok(self.make_token(TokenType::Colon)),
+                ':' => Ok(if self.expect(':')? { self.make_token(TokenType::ColonColon) } else {
+                    self.make_token(TokenType::Colon)
+                }),
 
                 '=' => Ok(if self.expect('=')? { self.make_token(TokenType::Equal) } else {
                     self.make_token(TokenType::Assign)

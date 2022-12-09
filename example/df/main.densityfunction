@@ -1,5 +1,5 @@
 include "minecraft.densityfunction";
-import df.*;
+import df::*;
 
 export zero = 0.0;
 

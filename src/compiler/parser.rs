@@ -233,11 +233,11 @@ impl<'source> Parser<'source> {
         let name = self.previous.clone();
         path.push(name);
 
-        if !self.check(TokenType::Dot) {
-            self.error_at_current("Expected '.' after name", true);
+        if !self.check(TokenType::ColonColon) {
+            self.error_at_current("Expected '::' after name", true);
         }
 
-        while self.matches(TokenType::Dot) {
+        while self.matches(TokenType::ColonColon) {
             if self.matches(TokenType::Multiply) {
                 break;
             } else if self.matches(TokenType::BracketLeft) {
@@ -260,10 +260,10 @@ impl<'source> Parser<'source> {
                 break;
             }
 
-            let name = self.expect_template_name("Expected name after '.'");
+            let name = self.expect_template_name("Expected name after '::'");
 
             if !self.check(TokenType::Semicolon) && name.token_type() != TokenType::Identifier {
-                self.error("Expected name after '.'", true);
+                self.error("Expected name after '::'", true);
             } else if self.check(TokenType::Semicolon) {
                 selector = Some(vec![name]);
                 break;
@@ -431,11 +431,19 @@ impl<'source> Parser<'source> {
         loop {
             if self.matches(TokenType::ParenthesisLeft) {
                 expr = self.finish_call(expr);
-            } else if self.matches(TokenType::Dot) {
-                self.expect(TokenType::Identifier, "Expected member name after '.'");
+            } else if self.matches(TokenType::ColonColon) {
+                self.expect(TokenType::Identifier, "Expected member name after '::'");
                 let name = self.previous.clone();
 
                 expr = Expr::Member { receiver: Box::new(expr), name }
+            } else if self.matches(TokenType::Dot) {
+                self.expect(TokenType::Identifier, "Expected template name after '.'");
+                let name = self.previous.clone();
+
+                expr = Expr::Member { receiver: Box::new(expr), name };
+
+                self.expect(TokenType::ParenthesisLeft, "Expected '(' after template name");
+                expr = self.finish_call(expr);
             } else if self.matches(TokenType::SquareBracketLeft) {
                 let token = self.previous.clone();
 
@@ -571,8 +579,8 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_builtin_call(&mut self) -> Expr {
-        self.expect(TokenType::Dot, "Expected '.' after 'builtin'");
-        self.expect(TokenType::Identifier, "Expected name after '.'");
+        self.expect(TokenType::ColonColon, "Expected '::' after 'builtin'");
+        self.expect(TokenType::Identifier, "Expected name after '::'");
         let name = self.previous.clone();
 
         if name.source() == "type" {
@@ -600,8 +608,8 @@ impl<'source> Parser<'source> {
     }
 
     fn parse_builtin_type(&mut self) -> Expr {
-        self.expect(TokenType::Dot, "Expected '.' after 'type'");
-        self.expect(TokenType::Identifier, "Expected name after '.'");
+        self.expect(TokenType::ColonColon, "Expected '::' after 'type'");
+        self.expect(TokenType::Identifier, "Expected name after '::'");
         let name = self.previous.clone();
 
         match name.source() {
@@ -706,6 +714,8 @@ impl<'source> Parser<'source> {
                 TokenType::Export => return,
                 TokenType::Template => return,
                 TokenType::Module => return,
+                TokenType::Include => return,
+                TokenType::Import => return,
                 _ => {},
             };
 
