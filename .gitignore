@@ -5,5 +5,8 @@ target/
 .idea/
 *.iml
 
+# Fleet
+.fleet/
+
 # Compiler test
 !example/**/target/

@@ -184,7 +184,7 @@ impl TypeHint {
 
                 false
             },
-            TypeHint::Error => *other == ExprType::Error,
+            TypeHint::Error => *other == ExprType::Error || allow_coerce,
             TypeHint::Any => *other == ExprType::Any || allow_coerce,
             _ => match other {
                 ExprType::Template { this: other_this, args: other_args, return_type: other_return_type } => match self {
@@ -195,7 +195,7 @@ impl TypeHint {
                 },
                 ExprType::Module => *self == TypeHint::Module,
                 ExprType::Any => false, // Would need self == Any, but that was already checked and is false
-                ExprType::Error => true,
+                ExprType::Error => allow_coerce,
                 expr_type => match self {
                     TypeHint::Simple(simple_type) => {
                         if allow_coerce {
@@ -225,7 +225,7 @@ impl TypeHint {
 
                 false
             },
-            TypeHint::Error => true,
+            TypeHint::Error => *other == ExprType::Error || allow_coerce,
             TypeHint::Any => *other == ExprType::Any,
             _ => match other {
                 ExprType::Template { this: other_this, args: other_args, return_type: other_return_type } => match self {
@@ -236,7 +236,7 @@ impl TypeHint {
                 },
                 ExprType::Module => *self == TypeHint::Module,
                 ExprType::Any => allow_coerce,
-                ExprType::Error => false,
+                ExprType::Error => allow_coerce,
                 expr_type => match self {
                     TypeHint::Simple(simple_type) => {
                         if allow_coerce {

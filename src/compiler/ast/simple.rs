@@ -138,6 +138,10 @@ pub enum Expr {
         receiver: Box<Expr>,
         name: Token,
     },
+    Receiver {
+        receiver: Box<Expr>,
+        name: Token,
+    },
     Index {
         receiver: Box<Expr>,
         operator: Token,
@@ -170,7 +174,8 @@ impl Debug for Expr {
                     .map(|expr| format!("{:?}", expr))
                     .collect::<Vec<String>>().join(", "))
             },
-            Expr::Member { receiver, name } => write!(f, "({:?}.{})", receiver, name.source()),
+            Expr::Member { receiver, name } => write!(f, "{:?}::{}", receiver, name.source()),
+            Expr::Receiver { receiver, name } => write!(f, "({:?}.{})", receiver, name.source()),
             Expr::Index { receiver, index, .. } => write!(f, "({:?}[{:?}])", receiver, index),
             Expr::BuiltinFunctionCall { name, args } => {
                 write!(f, "(builtin.{}({}))", name.source(), args.iter()

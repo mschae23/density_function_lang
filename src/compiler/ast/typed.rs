@@ -25,10 +25,8 @@ pub enum ExprType {
 
 impl ExprType {
     pub fn can_coerce_to(&self, other: &ExprType) -> bool {
-        if *self == *other || *self == ExprType::Error {
+        if *self == *other || *self == ExprType::Error || *other == ExprType::Error {
             return true;
-        } else if *other == ExprType::Error {
-            return false;
         }
 
         if *other == ExprType::Any {
@@ -266,6 +264,11 @@ pub enum TypedExpr {
         name: Token,
         result_type: ExprType,
     },
+    Receiver {
+        receiver: Box<TypedExpr>,
+        name: Token,
+        result_type: ExprType,
+    },
     BuiltinFunctionCall {
         name: Token,
         args: Vec<TypedExpr>,
@@ -290,6 +293,7 @@ impl TypedExpr {
             TypedExpr::TemplateArgument { expr_type, .. } => expr_type.clone(),
             TypedExpr::FunctionCall { result_type, .. } => result_type.clone(),
             TypedExpr::Member { result_type, .. } => result_type.clone(),
+            TypedExpr::Receiver { result_type, .. } => result_type.clone(),
             TypedExpr::BuiltinFunctionCall { result_type, .. } => result_type.clone(),
             TypedExpr::BuiltinType(_) => ExprType::Type,
             TypedExpr::Object(_) => ExprType::Object,

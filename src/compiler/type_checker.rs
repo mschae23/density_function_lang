@@ -181,6 +181,8 @@ impl TypeEnvironment {
         if recursion.should_recurse() {
             found.or_else(|| self.parent.as_ref().and_then(|parent| parent.upgrade())
                 .and_then(|parent| parent.borrow().find_module(name, recursion.decrement())))
+                .or_else(|| self.imports.as_ref().map(Rc::clone)
+                    .and_then(|imports| imports.borrow().find_module(name, RecursionToParent::Never)))
         } else {
             found
         }
@@ -192,6 +194,8 @@ impl TypeEnvironment {
         if recursion.should_recurse() {
             found.or_else(|| self.parent.as_ref().and_then(|parent| parent.upgrade())
                 .and_then(|parent| parent.borrow().find_module_type_environment(name, recursion.decrement())))
+                .or_else(|| self.imports.as_ref().map(Rc::clone)
+                .and_then(|imports| imports.borrow().find_module_type_environment(name, RecursionToParent::Never)))
         } else {
             found
         }
@@ -203,6 +207,8 @@ impl TypeEnvironment {
         if recursion.should_recurse() {
             found.or_else(|| self.parent.as_ref().and_then(|parent| parent.upgrade())
                 .and_then(|parent| parent.borrow().find_variable(name, recursion.decrement())))
+                .or_else(|| self.imports.as_ref().map(Rc::clone)
+                .and_then(|imports| imports.borrow().find_variable(name, RecursionToParent::Never)))
         } else {
             found
         }
@@ -697,11 +703,11 @@ impl TypeChecker {
                     todo!("Static member expressions")
                 }
 
-                let typed_receiver = self.check_expr(*receiver, static_expr, TypeHint::Options(vec![TypeHint::Module, TypeHint::Any]));
+                let typed_receiver = self.check_expr(*receiver, static_expr, TypeHint::Options(vec![TypeHint::Module]));
 
                 match &type_hint {
                     TypeHint::Template(template) => {
-                        let templates = match self.resolve_module_expr(&typed_receiver) {
+                        let templates = match self.resolve_module_typed_expr(&typed_receiver) {
                             Ok(module) => module.borrow().find_template(name.source(), template, true, RecursionToParent::Always),
                             Err(_) => self.environment().borrow().find_template(name.source(), template, true, RecursionToParent::Always),
                         };
@@ -719,6 +725,7 @@ impl TypeChecker {
                         } else {
                             let template_expr_type = TemplateDeclaration::decl_to_type(Rc::clone(&templates[0]));
 
+                            // Template can't have this parameter when using member expression syntax
                             if let ExprType::Template { this, .. } = &template_expr_type {
                                 if let Some(hint_this) = template.this.as_ref() {
                                     if let Some(this) = this.as_ref() {
@@ -747,12 +754,100 @@ impl TypeChecker {
                     },
                 }
             },
+            Expr::Receiver { receiver, name } => {
+                let typed_receiver = self.check_expr(*receiver, static_expr, TypeHint::Any);
+                let receiver_type = typed_receiver.get_type();
+
+                match &type_hint {
+                    TypeHint::Template(template) => {
+                        let templates = self.environment().borrow().find_template(name.source(), &TemplateType { this: Some(Box::new(receiver_type.to_type_hint())), .. template.clone() }, true, RecursionToParent::Always);
+
+                        if templates.is_empty() {
+                            self.error_at_with_context(*name.start(), &format!("Template '{}' not found", name.source()), vec![
+                            ("Expected", &type_hint),
+                            ], false);
+                            TypedExpr::Error
+                        } else if templates.len() > 1 {
+                            self.error_at_with_context(*name.start(), &format!("Template '{}' is ambiguous", name.source()), vec![
+                            ("Expected", &type_hint),
+                            ], false);
+                            TypedExpr::Error
+                        } else {
+                            let template_expr_type = TemplateDeclaration::decl_to_type(Rc::clone(&templates[0]));
+
+                            // Template will always have 'this' parameter when using receiver syntax
+                            if let ExprType::Template { this, .. } = &template_expr_type {
+                                if let Some(hint_this) = template.this.as_ref() {
+                                    if let Some(this) = this.as_ref() {
+                                        if !hint_this.can_coerce_from(this, true) {
+                                            self.error_at_with_context(*name.start(), &format!("Mismatched types: 'this' argument of template '{}'", name.source()), vec![
+                                            ("Expected", &**hint_this),
+                                            ("Found", &this.to_type_hint()),
+                                            ], false);
+                                        }
+                                    }
+                                }
+                            };
+
+                            TypedExpr::Receiver {
+                                receiver: Box::new(typed_receiver),
+                                name,
+                                result_type: template_expr_type,
+                            }
+                        }
+                    },
+                    _ => {
+                        if name.source() == "type" {
+                            return TypedExpr::BuiltinType(receiver_type);
+                        }
+
+                        self.error_at_with_context(*name.start(), &format!("Reference '{}' not found", name.source()), vec![
+                        ("Expected", &type_hint),
+                        ], false);
+                        TypedExpr::Error
+                    },
+                }
+            },
             Expr::Index { receiver, operator, index } => {
                 self.check_operator_expr(operator, vec![*receiver, *index], static_expr, type_hint)
             },
-            Expr::BuiltinFunctionCall { name, args: _ } => {
-                self.error_at(*name.start(), "Built-in function calls are not supported yet", true);
-                TypedExpr::Error
+            Expr::BuiltinFunctionCall { name, mut args } => {
+                if name.source() == "static" {
+                    if args.len() != 1 {
+                        self.error_at(*name.start(), &format!("Wrong number of arguments for built-in function call: expected 1, found {}", args.len()), false);
+                        TypedExpr::Error
+                    } else {
+                        self.check_expr(args.swap_remove(0), true, type_hint)
+                    }
+                } else if name.source() == "nonstatic" {
+                    if args.len() != 1 {
+                        self.error_at(*name.start(), &format!("Wrong number of arguments for built-in function call: expected 1, found {}", args.len()), false);
+                        TypedExpr::Error
+                    } else {
+                        self.check_expr(args.swap_remove(0), false, type_hint)
+                    }
+                } else if name.source() == "error" {
+                    if args.len() < 1 {
+                        self.error_at(*name.start(), &format!("Wrong number of arguments for built-in function call: expected at least 1, found {}", args.len()), false);
+                        TypedExpr::Error
+                    } else {
+                        let typed_args = args.into_iter().enumerate()
+                            .map(|(i, arg)| self.check_expr(arg, static_expr, if i == 0 { TypeHint::Simple(SimpleType::String) } else { TypeHint::Any }))
+                            .collect::<Vec<_>>();
+
+                        if typed_args[0].get_type() != ExprType::String {
+                            self.error_at_with_context(*name.start(), "Mismatched types: argument 1 of built-in function call", vec![
+                                ("Expected", &TypeHint::Simple(SimpleType::String)),
+                                ("Found", &typed_args[0].get_type().to_type_hint()),
+                            ], false);
+                        }
+
+                        TypedExpr::BuiltinFunctionCall { name, args: typed_args, result_type: ExprType::Any }
+                    }
+                } else {
+                    self.error_at(*name.start(), &format!("Built-in function '{}' not found", name.source()), true);
+                    TypedExpr::Error
+                }
             },
             Expr::BuiltinType(ty) => TypedExpr::BuiltinType(ty),
             Expr::Object(fields) => {
@@ -923,10 +1018,6 @@ impl TypeChecker {
                     &self.environment.borrow().find_template_options(token.source(), false, arg_count, RecursionToParent::Always)),
                     false, arg_count, return_type_hint),
             Expr::FunctionCall { callee: callee2, token: _, args } => {
-                /* let has_this2 = match &callee2 {
-                    Expr::Member { .. } => true,
-                    _ => false,
-                }; */
                 let arg_count2 = args.len();
 
                 let template_type_hint = self.get_template_call_type_hint(callee2, arg_count2,
@@ -938,23 +1029,30 @@ impl TypeChecker {
                         if hints.is_empty() {
                             TemplateType::new_any(false, arg_count, return_type_hint)
                         } else {
-                            let mut types = Vec::new();
-
-                            for return_type in hints {
-                                if let TypeHint::Template(template) = return_type {
-                                    types.push(template)
-                                }
-                            }
-
-                            TemplateType::merge(&types, false, arg_count, return_type_hint)
+                            TemplateType::merge(&hints.into_iter()
+                                .filter_map(|hint| if let TypeHint::Template(template) = hint { Some(template) } else { None })
+                                .collect::<Vec<_>>(), false, arg_count, return_type_hint)
                         }
                     },
                     _ => TemplateType::new_any(false, arg_count, return_type_hint),
                 }
             },
-            Expr::Member { receiver: _, name } => {
-                self.error_at(*name.start(), "Calling templates on other elements is not supported yet", true);
-                TemplateType::new_any(true, arg_count, return_type_hint)
+            Expr::Member { receiver, name } => {
+                let environment = match self.resolve_module_expr(&**receiver) {
+                    Ok(environment) => environment,
+                    Err(_) => return TemplateType::new_any(false, arg_count, return_type_hint),
+                };
+
+                let x = TemplateType::merge(&TemplateDeclaration::templates_to_template_types(
+                    &environment.borrow().find_template_options(name.source(), false, arg_count, RecursionToParent::Always)),
+                    false, arg_count, return_type_hint);
+                x
+            },
+            Expr::Receiver { receiver, name } => {
+                let x = TemplateType::merge(&TemplateDeclaration::templates_to_template_types(
+                    &self.environment().borrow().find_template_options(name.source(), true, arg_count, RecursionToParent::Always)),
+                    true, arg_count, return_type_hint);
+                x
             },
             Expr::UnaryOperator { operator, .. } | Expr::BinaryOperator { operator, .. } | Expr::Index { operator, .. } => {
                 self.error_at(*operator.start(), "Calling templates returned by operators is not supported yet", true);
@@ -1058,18 +1156,18 @@ impl TypeChecker {
     }
 
     fn resolve_module(&self, name: &Token) -> Option<Rc<RefCell<ModuleDeclaration>>> {
-        self.import_environment().borrow()
+        self.environment().borrow()
             .find_module(name.source(), RecursionToParent::Always)
     }
 
-    fn resolve_module_expr<'a>(&self, expr: &'a TypedExpr) -> Result<Rc<RefCell<TypeEnvironment>>, Option<&'a Token>> {
+    fn resolve_module_typed_expr<'a>(&self, expr: &'a TypedExpr) -> Result<Rc<RefCell<TypeEnvironment>>, Option<&'a Token>> {
         match expr {
             TypedExpr::Identifier { token, expr_type, .. } => {
                 if *expr_type != ExprType::Module {
                     return Err(Some(token));
                 }
 
-                self.import_environment().borrow().get_child(token.source())
+                self.environment().borrow().get_child(token.source())
                     .or_else(|| self.environment.borrow().get_child(token.source())).ok_or(Some(token))
             },
             TypedExpr::Member { receiver, name, result_type } => {
@@ -1077,6 +1175,21 @@ impl TypeChecker {
                     return Err(Some(name));
                 }
 
+                let receiver_module = self.resolve_module_typed_expr(receiver)?;
+                let x = receiver_module.borrow().get_child(name.source()).ok_or(Some(name));
+                x
+            },
+            _ => Err(None),
+        }
+    }
+
+    fn resolve_module_expr<'a>(&self, expr: &'a Expr) -> Result<Rc<RefCell<TypeEnvironment>>, Option<&'a Token>> {
+        match expr {
+            Expr::Identifier(token) => {
+                self.environment().borrow().get_child(token.source())
+                    .or_else(|| self.environment.borrow().get_child(token.source())).ok_or(Some(token))
+            },
+            Expr::Member { receiver, name } => {
                 let receiver_module = self.resolve_module_expr(receiver)?;
                 let x = receiver_module.borrow().get_child(name.source()).ok_or(Some(name));
                 x
@@ -1086,7 +1199,7 @@ impl TypeChecker {
     }
 
     fn resolve_variable(&self, name: &Token) -> Option<Rc<RefCell<VariableDeclaration>>> {
-        self.import_environment().borrow()
+        self.environment().borrow()
             .find_variable(name.source(), RecursionToParent::Always)
     }
 
