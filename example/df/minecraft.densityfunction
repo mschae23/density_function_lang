@@ -130,12 +130,12 @@ module df {
     // Other templates
 
     template lerp(delta, start, end) {
-        // if (start.type == builtin.type.int || start.type == builtin.type.float) {
-        //     impl.lerp_const_start(delta, start, end) // Vanilla optimization
-        // } else {
+        if (start.type == builtin::type::int || start.type == builtin::type::float) {
+            impl::lerp_const_start(delta, start as builtin::type::float, end) // Vanilla optimization
+        } else {
             start * (cache_once(delta) * -1.0 + 1.0)
                 + end * cache_once(delta)
-        // }
+        }
     }
 
     template apply_blending(input, blend_offset) {
@@ -143,7 +143,7 @@ module df {
     }
 
     template apply_blend_density(input) {
-        (0.64 * interpolated(blend_density(input))) // .squeeze()
+        (0.64 * interpolated(blend_density(input))).squeeze()
     }
 
     template apply_slides(input, min_y: int, max_y: int,
@@ -176,7 +176,7 @@ module df {
 
         template df_or_number(input) {
             if (input.type == builtin::type::int || input.type == builtin::type::float) {
-                if (input < -1000000.0 || input > 1000000.0) {
+                if (input as builtin::type::float < -1000000.0 || input as builtin::type::float > 1000000.0) {
                     builtin::error("Validation failed: Number out of range", input);
                     false
                 } else true
@@ -209,12 +209,12 @@ module df {
     }
 
     module impl {
-        template lerp_const_start(delta, start, end) { // Requires start to be a constant number
-            // if (start == 0.0) {
-            //     delta * end
-            // } else {
-            /* start + delta * (builtin.static(-start) + end) */ 0.0
-            // }
+        template lerp_const_start(delta, start: float, end) { // Requires start to be a constant number
+            if (start == 0.0) {
+                delta * end
+            } else {
+                start + delta * (builtin::static(-start) + end)
+            }
         }
     }
 }

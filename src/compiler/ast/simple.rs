@@ -6,7 +6,7 @@ use crate::compiler::ast::typed::{ExprType, TypedToken};
 
 use crate::compiler::lexer::Token;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum VariableType {
     Simple,
     Inline,
@@ -152,6 +152,11 @@ pub enum Expr {
         args: Vec<Expr>,
     },
     BuiltinType(ExprType),
+    TypeCast {
+        expr: Box<Expr>,
+        token: Token,
+        to: ExprType,
+    },
 
     Object(Vec<(Token, Expr)>),
     Array(Vec<Expr>),
@@ -183,6 +188,7 @@ impl Debug for Expr {
                     .collect::<Vec<String>>().join(", "))
             },
             Expr::BuiltinType(element_type) => write!(f, "{:?}", element_type),
+            Expr::TypeCast { expr, to, .. } => write!(f, "({:?} as {:?})", expr, to),
 
             // Copied from Debug for JsonElement
             Expr::Object(fields) => write!(f, "{{{}}}", fields.iter()

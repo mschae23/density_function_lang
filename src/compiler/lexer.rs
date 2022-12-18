@@ -59,6 +59,7 @@ pub enum TokenType {
     Module, Include, Import,
     True, False,
     Int, Float, Boolean, String, Object, Array,
+    As,
 
     // EOF
     Eof,
@@ -66,9 +67,9 @@ pub enum TokenType {
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct Token {
-    token_type: TokenType,
-    source: String,
-    start: TokenPos, end: TokenPos,
+    pub token_type: TokenType,
+    pub source: String,
+    pub start: TokenPos, pub end: TokenPos,
 }
 
 impl Token {
@@ -341,7 +342,13 @@ impl<'source> Lexer<'source> {
         let mut chars = name.chars();
 
         let token_type = match chars.next().expect("Internal compiler error: Empty identifier") {
-            'a' => Lexer::check_keyword(name, 1, "array", TokenType::Array),
+            'a' => if let Some(c) = chars.next() {
+                match c {
+                    'r' => Lexer::check_keyword(name, 2, "array", TokenType::Array),
+                    's' => Lexer::check_keyword(name, 2, "as", TokenType::As),
+                    _ => TokenType::Identifier,
+                }
+            } else { TokenType::Identifier },
             'b' => if let Some(c) = chars.next() {
                 match c {
                     'o' => Lexer::check_keyword(name, 2, "boolean", TokenType::Boolean),

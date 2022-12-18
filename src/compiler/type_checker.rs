@@ -827,7 +827,7 @@ impl TypeChecker {
                         self.check_expr(args.swap_remove(0), false, type_hint)
                     }
                 } else if name.source() == "error" {
-                    if args.len() < 1 {
+                    if args.is_empty() {
                         self.error_at(*name.start(), &format!("Wrong number of arguments for built-in function call: expected at least 1, found {}", args.len()), false);
                         TypedExpr::Error
                     } else {
@@ -850,6 +850,19 @@ impl TypeChecker {
                 }
             },
             Expr::BuiltinType(ty) => TypedExpr::BuiltinType(ty),
+            Expr::TypeCast { expr, token, to } => {
+                let typed_expr = self.check_expr(*expr, static_expr, if type_hint.can_coerce_from(&to, true) { TypeHint::Any } else { type_hint.clone() });
+
+                if !typed_expr.get_type().can_cast_to(&to) {
+                    self.error_at_with_context(token.start, "Mismatched types: cannot cast expression", vec![
+                        ("From", &typed_expr.get_type().to_type_hint()),
+                        ("To", &to.to_type_hint()),
+                        ("Expected", &type_hint),
+                    ], false);
+                }
+
+                TypedExpr::TypeCast { expr: Box::new(typed_expr), to }
+            },
             Expr::Object(fields) => {
                 TypedExpr::Object(fields.into_iter().map(|(token, expr)|
                     (token, self.check_expr(expr, static_expr, TypeHint::Any)))
@@ -1038,7 +1051,7 @@ impl TypeChecker {
                 }
             },
             Expr::Member { receiver, name } => {
-                let environment = match self.resolve_module_expr(&**receiver) {
+                let environment = match self.resolve_module_expr(receiver) {
                     Ok(environment) => environment,
                     Err(_) => return TemplateType::new_any(false, arg_count, return_type_hint),
                 };
@@ -1048,7 +1061,7 @@ impl TypeChecker {
                     false, arg_count, return_type_hint);
                 x
             },
-            Expr::Receiver { receiver, name } => {
+            Expr::Receiver { receiver: _receiver, name } => {
                 let x = TemplateType::merge(&TemplateDeclaration::templates_to_template_types(
                     &self.environment().borrow().find_template_options(name.source(), true, arg_count, RecursionToParent::Always)),
                     true, arg_count, return_type_hint);

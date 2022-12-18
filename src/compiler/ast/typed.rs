@@ -36,6 +36,12 @@ impl ExprType {
         }
     }
 
+    pub fn can_cast_to(&self, other: &ExprType) -> bool {
+        self.can_coerce_to(other)
+            || *self == ExprType::Any
+            || (*self == ExprType::Float && *other == ExprType::Int)
+    }
+
     pub fn to_type_hint(&self) -> TypeHint {
         TypeHint::from_expr_type(self)
     }
@@ -75,7 +81,7 @@ impl Debug for TypedToken {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct TemplateDeclaration {
     pub name: Token,
     pub this: Option<TypedToken>,
@@ -275,6 +281,10 @@ pub enum TypedExpr {
         result_type: ExprType,
     },
     BuiltinType(ExprType),
+    TypeCast {
+        expr: Box<TypedExpr>,
+        to: ExprType,
+    },
 
     Object(Vec<(Token, TypedExpr)>),
     Array(Vec<TypedExpr>),
@@ -296,6 +306,7 @@ impl TypedExpr {
             TypedExpr::Receiver { result_type, .. } => result_type.clone(),
             TypedExpr::BuiltinFunctionCall { result_type, .. } => result_type.clone(),
             TypedExpr::BuiltinType(_) => ExprType::Type,
+            TypedExpr::TypeCast { to, .. } => to.clone(),
             TypedExpr::Object(_) => ExprType::Object,
             TypedExpr::Array(_) => ExprType::Array,
             TypedExpr::Error => ExprType::Error,

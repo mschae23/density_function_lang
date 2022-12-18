@@ -91,7 +91,7 @@ impl<'source> Parser<'source> {
     fn parse_export_declaration(&mut self) -> Decl {
         self.expect(TokenType::Identifier, "Expected name after 'export'");
         let name = self.previous.clone();
-        let expr_type = self.expect_type("Expected variable type after ':'");
+        let expr_type = self.expect_variable_type("Expected variable type after ':'");
 
         self.expect(TokenType::Assign, "Expected '=' after export name");
 
@@ -112,7 +112,7 @@ impl<'source> Parser<'source> {
         name
     }
 
-    fn expect_type(&mut self, message: &str) -> ExprType {
+    fn expect_variable_type(&mut self, message: &str) -> ExprType {
         if self.matches(TokenType::Colon) {
             self.expect_any(&*ALLOWED_VARIABLE_TYPES, message);
             let variable_type = self.previous.clone();
@@ -142,7 +142,7 @@ impl<'source> Parser<'source> {
 
         if self.matches(TokenType::This) {
             let name = self.previous.clone();
-            let this_type = self.expect_type("Expected template parameter type after ':'");
+            let this_type = self.expect_variable_type("Expected template parameter type after ':'");
             this = Some(TypedToken { token: name, expr_type: this_type });
 
             if !self.check(TokenType::ParenthesisRight) {
@@ -153,13 +153,13 @@ impl<'source> Parser<'source> {
         if !self.check(TokenType::ParenthesisRight) {
             self.expect(TokenType::Identifier, "Expected template parameter name after '('");
             let name = self.previous.clone();
-            let parameter_type = self.expect_type("Expected template parameter type after ':'");
+            let parameter_type = self.expect_variable_type("Expected template parameter type after ':'");
             arguments.push(TypedToken { token: name, expr_type: parameter_type });
 
             while self.matches(TokenType::Comma) {
                 self.expect(TokenType::Identifier, "Expected template parameter name after ','");
                 let name = self.previous.clone();
-                let parameter_type = self.expect_type("Expected template parameter type after ':'");
+                let parameter_type = self.expect_variable_type("Expected template parameter type after ':'");
 
                 if arguments.iter().any(|arg| *arg.token.source() == *name.source()) {
                     self.error("Duplicate parameter", false);
@@ -170,7 +170,7 @@ impl<'source> Parser<'source> {
         }
 
         self.expect(TokenType::ParenthesisRight, "Expected ')' after template parameters");
-        let return_type = self.expect_type("Expected template return type after ':'");
+        let return_type = self.expect_variable_type("Expected template return type after ':'");
 
         self.expect(TokenType::BracketLeft, "Expected '{' after ')'");
 
@@ -422,7 +422,37 @@ impl<'source> Parser<'source> {
             return Expr::UnaryOperator { operator, expr: Box::new(right) };
         }
 
-        self.parse_call()
+        self.parse_cast()
+    }
+
+    fn parse_cast(&mut self) -> Expr {
+        let mut expr = self.parse_call();
+
+        loop {
+            if self.matches(TokenType::As) {
+                let token = self.previous.clone();
+
+                self.expect(TokenType::Builtin, "Expected 'builtin' after 'as'");
+                self.expect(TokenType::ColonColon, "Expected '::' after 'builtin'");
+                self.expect(TokenType::Identifier, "Expected 'type' after '::'");
+
+                if self.previous.source() != "type" {
+                    self.error("Expected 'type' after '::'", true);
+                }
+
+                self.expect(TokenType::ColonColon, "Expected '::' after 'type'");
+
+                if let Some(to) = self.expect_type() {
+                    expr = Expr::TypeCast { expr: Box::new(expr), token, to, };
+                } else {
+                    break; // Error already reported
+                }
+            } else {
+                break;
+            }
+        }
+
+        expr
     }
 
     fn parse_call(&mut self) -> Expr {
@@ -610,24 +640,28 @@ impl<'source> Parser<'source> {
         Expr::BuiltinFunctionCall { name, args: arguments }
     }
 
-    fn parse_builtin_type(&mut self) -> Expr {
-        self.expect(TokenType::ColonColon, "Expected '::' after 'type'");
+    fn expect_type(&mut self) -> Option<ExprType> {
         self.expect_any(&[TokenType::Float, TokenType::Int, TokenType::Boolean, TokenType::String, TokenType::Object, TokenType::Array, TokenType::Object, TokenType::Identifier], "Expected type name after '::'");
         let name = self.previous.clone();
 
         match name.source() {
-            "float" => Expr::BuiltinType(ExprType::Float),
-            "int" => Expr::BuiltinType(ExprType::Int),
-            "boolean" => Expr::BuiltinType(ExprType::Boolean),
-            "string" => Expr::BuiltinType(ExprType::String),
-            "object" => Expr::BuiltinType(ExprType::Object),
-            "array" => Expr::BuiltinType(ExprType::Array),
-            "type" => Expr::BuiltinType(ExprType::Type),
+            "float" => Some(ExprType::Float),
+            "int" => Some(ExprType::Int),
+            "boolean" => Some(ExprType::Boolean),
+            "string" => Some(ExprType::String),
+            "object" => Some(ExprType::Object),
+            "array" => Some(ExprType::Array),
+            "type" => Some(ExprType::Type),
             _ => {
                 self.error("Unknown type", true);
-                Expr::Error
+                None
             },
         }
+    }
+
+    fn parse_builtin_type(&mut self) -> Expr {
+        self.expect(TokenType::ColonColon, "Expected '::' after 'type'");
+        self.expect_type().map(Expr::BuiltinType).unwrap_or(Expr::Error)
     }
 
     fn consume(&mut self) {
