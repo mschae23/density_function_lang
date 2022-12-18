@@ -8,7 +8,7 @@ use std::rc::Rc;
 use clap::Parser as ClapParser;
 use crate::compiler::ast::simple::{Decl, ExportFunction};
 use crate::compiler::ast::typed::TypedDecl;
-use crate::compiler::compiler::Compiler;
+use crate::compiler::evaluator::Evaluator;
 use crate::compiler::lexer::Lexer;
 use crate::compiler::parser::Parser;
 use crate::compiler::type_checker::TypeChecker;
@@ -45,7 +45,7 @@ pub fn parse(path: &Path) -> Result<Option<Vec<Decl>>, std::io::Error> {
     Ok(Some(declarations))
 }
 
-type CompileResult = Option<((), Compiler)>;
+type CompileResult = Option<((), Evaluator)>;
 
 pub fn compile(path: PathBuf, target_dir: PathBuf, config: Rc<Config>) -> Result<CompileResult, std::io::Error> {
     let declarations = match parse(&path)? {
@@ -66,7 +66,7 @@ pub fn compile(path: PathBuf, target_dir: PathBuf, config: Rc<Config>) -> Result
         eprintln!("{:?}", decl);
     }
 
-    let mut compiler = Compiler::new(path, target_dir, config);
+    let mut compiler = Evaluator::new(path, target_dir, config);
     // compiler.compile(declarations);
     // let functions = compiler.collect_exports();
 
