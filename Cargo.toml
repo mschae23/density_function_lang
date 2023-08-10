@@ -10,5 +10,5 @@ lto = true
 strip = "symbols"
 
 [dependencies]
-clap = { version = "3.2.12", features = ["derive"] }
+clap = { version = "4.3.21", features = ["derive"] }
 lazy_static = "1.4.0"
